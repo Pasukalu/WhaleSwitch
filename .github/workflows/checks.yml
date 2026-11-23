@@ -1,0 +1,87 @@
+name: Test and build desktop
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Test and build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+            bundle: nsis
+          - os: macos-15
+            target: macos-arm64
+            bundle: dmg
+          - os: macos-15-intel
+            target: macos-x64
+            bundle: dmg
+          - os: ubuntu-22.04
+            target: linux-x64
+            bundle: deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libdbus-1-dev
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Frontend tests
+        run: npm test
+      - name: Core unit and integration tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
+      - name: Build desktop installer
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+      - name: Stage installer and SHA-256
+        run: node scripts/stage-installers.mjs ${{ matrix.target }}
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhaleSwitch-${{ matrix.target }}
+          if-no-files-found: error
+          path: release-assets/*
+
+  release:
+    name: Prepare draft release
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: desktop
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check release version
+        shell: bash
+        run: |
+          node --input-type=commonjs -e 'const fs=require("node:fs"); const tag=process.env.GITHUB_REF_NAME; const pkg=require("./package.json"); const tauri=require("./src-tauri/tauri.conf.json"); const cargo=fs.readFileSync("./src-tauri/Cargo.toml","utf8").match(/^version = "([^"]+)"$/m)?.[1]; if (tag !== "v"+pkg.version || pkg.version !== tauri.version || pkg.version !== cargo || !/^v\d+\.\d+\.\d+$/.test(tag)) process.exit(1);'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WhaleSwitch-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create draft with installers and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --draft --generate-notes --title "WhaleSwitch $GITHUB_REF_NAME"

@@ -1,0 +1,30 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { demo } from "./demo";
+import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfilePreview, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+
+export const previewMode = !isTauri();
+function request<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return previewMode ? demo<T>(command, args ?? {}) : invoke<T>(command, args);
+}
+
+export const api = {
+  discover: () => request<ToolInfo[]>("discover"),
+  view: (tool: Tool) => request<View>("view", { tool }),
+  preview: (target: Target, patch: Fields) => request<Change[]>("preview", { target, patch }),
+  save: (target: Target, patch: Fields) => request<View>("save", { target, patch }),
+  snapshots: (tool: Tool) => request<Snapshot[]>("snapshots", { tool }),
+  snapshot: (target: Target) => request<Snapshot>("snapshot", { target }),
+  profiles: (tool: Tool) => request<Profile[]>("profiles", { tool }),
+  createProfile: (target: Target, name: string, patch: Fields) => request<Profile>("create_profile", { target, name, patch }),
+  previewProfile: (target: Target, id: number) => request<ProfilePreview>("preview_profile", { target, id }),
+  applyProfile: (target: Target, id: number) => request<View>("apply_profile", { target, id }),
+  deleteProfile: (tool: Tool, id: number) => request<void>("delete_profile", { tool, id }),
+  compareSnapshot: (target: Target, id: number) => request<Change[]>("compare_snapshot", { target, id }),
+  restore: (target: Target, id: number) => request<View>("restore", { target, id }),
+  importArchive: (tool: Tool) => request<Fields>("import_archive", { tool }),
+  exportArchive: (target: Target) => request<void>("export_archive", { target }),
+  hasKey: (input: ProbeInput) => request<boolean>("has_key", { input }),
+  setKey: (input: ProbeInput, secret: string) => request<void>("set_key", { input, secret }),
+  removeKey: (input: ProbeInput) => request<void>("remove_key", { input }),
+  probe: (input: ProbeInput) => request<ProbeResult>("probe", { input }),
+};
