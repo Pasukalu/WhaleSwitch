@@ -1,5 +1,7 @@
 # WhaleSwitch
 
+[![Desktop builds](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml)
+
 **AI 编程工具的本地配置工作台 / Local configuration workbench for AI coding CLIs**
 
 在同一个桌面应用里管理 Codex CLI、Claude Code 和 OpenCode。保存常用配置档案，预览每一项改动，并在覆盖配置时自动留下加密快照。
@@ -15,7 +17,7 @@ Manage Codex CLI, Claude Code, and OpenCode from one desktop app. Save reusable 
 3. 修改字段后选择 **查看差异**。也可在 **配置档案** 保存当前配置或草稿，随后比较并应用。
 4. 若需撤销修改，到 **快照** 比较并恢复完整历史文件。若当前文件无法解析，也可以从有效快照恢复。
 
-Open the app, scan for tools, and review the resolved config path. Change fields or capture a named profile, then review the diff before applying. The Snapshots tab can restore a previous full file even if the current file is malformed.
+Open the app, scan for tools, and review the resolved config path. Change fields or capture a named profile, then review the diff before applying. Rename or duplicate a profile from its row in **Profiles**. The Snapshots tab can restore a previous full file even if the current file is malformed.
 
 ## Supported settings
 
@@ -34,11 +36,14 @@ The field list follows the [Codex configuration reference](https://learn.chatgpt
 | Action | Effect |
 | --- | --- |
 | Save profile | Stores validated fields for the selected tool in SQLite, including defaults captured as unset. |
+| Rename or duplicate | Rename keeps the same profile and captured values. Duplicate creates a separate profile from its saved fields. Both actions update the saved profile list. |
 | Apply profile | Starts with a read-only field diff, then uses the normal revision-checked write and backup flow. |
 | Restore snapshot | Restores the full original bytes at the same tool and path. An existing file is backed up first. |
 | Export or import | Exports portable, allowlisted fields as JSON. Import stages an overlay for review. |
 
 档案只包含支持字段，工具的原生登录仍由对应 CLI 管理。快照保存完整原文，因此使用系统密钥库中的专用密钥加密。密钥库不可用时，应用会拒绝覆盖已有配置。读取、保存与还原流程详见 [架构与安全](docs/ARCHITECTURE.md)。
+
+在 **配置档案** 中，可以重命名档案，或将已保存的字段复制到新档案。操作只影响档案列表，明确应用并确认差异后才会写入工具配置。
 
 ## Connection tests
 
@@ -60,7 +65,7 @@ npm run tauri build
 
 `npm run dev` serves a browser preview at `http://localhost:1420`. It uses simulated configuration data in memory. Desktop filesystem writes and credential operations require Tauri.
 
-GitHub Actions runs frontend and Rust tests and packages each target. Each installer is paired with a SHA-256 file. A version-matching tag creates a draft release after all matrix builds succeed. The current packaging setup produces unsigned installers. Before publishing the draft, install and open the bundles, then verify the OS keyring and a save-and-restore cycle with disposable config files.
+GitHub Actions runs frontend and Rust tests and packages each target. Installers from successful runs are available in **Artifacts** on the [desktop builds page](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml). Each installer is paired with a SHA-256 file. A version-matching tag creates a draft release after all matrix builds succeed. The current packaging setup produces unsigned installers. Before publishing the draft, install and open the bundles, then verify the OS keyring and a save-and-restore cycle with disposable config files.
 
 ## Project references and license
 

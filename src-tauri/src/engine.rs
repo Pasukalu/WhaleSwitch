@@ -150,6 +150,17 @@ impl Engine {
         self.storage.profiles(tool)
     }
 
+    pub fn rename_profile(&self, tool: Tool, id: i64, name: &str) -> Result<Profile> {
+        let _lock = self.storage.lock()?;
+        self.storage.rename_profile(tool, id, name)
+    }
+
+    pub fn duplicate_profile(&self, tool: Tool, id: i64, name: &str) -> Result<Profile> {
+        let _lock = self.storage.lock()?;
+        let source = self.storage.profile(tool, id)?;
+        self.storage.create_profile(tool, name, source.fields)
+    }
+
     pub fn create_profile(&self, tool: Tool, target: &str, revision: &str, name: &str, patch: &Fields) -> Result<Profile> {
         let _lock = self.storage.lock()?;
         let path = self.bound_target(tool, target)?;

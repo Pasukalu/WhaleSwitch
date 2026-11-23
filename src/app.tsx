@@ -7,7 +7,7 @@ import {
 import { api, previewMode } from "./api";
 import { Connection } from "./components/connection";
 import { DiffDialog } from "./components/diff-dialog";
-import { Profiles } from "./components/profiles";
+import { Profiles, type ProfileEdit } from "./components/profiles";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, fieldPatch, fieldPath, targetOf, type Change, type Field, type Fields, type Profile, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
@@ -211,6 +211,17 @@ export function App() {
     setReview({ kind: "profile", id: profile.id, ...result });
   }
 
+  function editProfile(kind: ProfileEdit, profile: Profile, name: string) {
+    return run(async () => {
+      const edited = kind === "rename" ? await api.renameProfile(tool, profile.id, name)
+        : await api.duplicateProfile(tool, profile.id, name);
+      setProfiles((previous) => kind === "rename"
+        ? previous.map((item) => item.id === edited.id ? edited : item)
+        : [edited, ...previous]);
+      success(kind === "rename" ? t.profileRenamed : t.profileDuplicated);
+    });
+  }
+
   async function removeProfile(profile: Profile) {
     if (!window.confirm(`${t.profileDeletePrompt}\n${profile.name}`)) return;
     await api.deleteProfile(tool, profile.id);
@@ -304,7 +315,7 @@ export function App() {
                   available={Boolean(view && !view.issue)} dirty={dirty} busy={busy} loading={profilesLoading}
                   error={profilesProblem ? errorText(profilesProblem, language) : null}
                   onCreate={createProfile} onApply={(profile) => void run(() => previewProfile(profile))}
-                  onRemove={(profile) => void run(() => removeProfile(profile))}/>
+                  onRemove={(profile) => void run(() => removeProfile(profile))} onEdit={editProfile}/>
                 : tab === "snapshots" ? <section className="panel">
                   <div className="panel-head spread"><div className="head-label"><div className="section-icon"><History size={19}/></div><div><h2>{t.snapshots}</h2><p>{t.safeStorage}</p></div></div>
                     <Button variant="outline" size="sm" disabled={busy || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>

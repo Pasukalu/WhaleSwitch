@@ -19,13 +19,7 @@ pub struct ProfilePreview {
 
 impl Storage {
     pub(crate) fn create_profile(&self, tool: Tool, name: &str, fields: Fields) -> Result<Profile> {
-        let name = name.trim();
-        let lower = name.to_ascii_lowercase();
-        if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control)
-            || ["sk-", "sk_", "ghp_", "github_pat_", "xoxb-", "sess-", "eyjhb"]
-                .iter().any(|prefix| lower.contains(*prefix)) {
-            return Err(Error::InvalidProfileName);
-        }
+        let name = validate_name(name)?;
         tool.validate(&fields)?;
         let encoded = serde_json::to_string(&fields).map_err(|_| Error::ProfileStorage)?;
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
@@ -68,6 +62,30 @@ impl Storage {
         if changes == 0 { return Err(Error::ProfileMissing); }
         Ok(())
     }
+
+    pub(crate) fn rename_profile(&self, tool: Tool, id: i64, name: &str) -> Result<Profile> {
+        let name = validate_name(name)?;
+        let mut profile = self.profile(tool, id)?;
+        let db = self.db().map_err(|_| Error::ProfileStorage)?;
+        let changes = db.execute(
+            "UPDATE OR IGNORE profiles SET name=?1 WHERE tool=?2 AND id=?3",
+            params![name, tool.id(), id],
+        ).map_err(|_| Error::ProfileStorage)?;
+        if changes == 0 { return Err(Error::ProfileNameExists); }
+        profile.name = name.to_owned();
+        Ok(profile)
+    }
+}
+
+fn validate_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    let lower = name.to_ascii_lowercase();
+    if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control)
+        || ["sk-", "sk_", "ghp_", "github_pat_", "xoxb-", "sess-", "eyjhb"]
+            .iter().any(|prefix| lower.contains(*prefix)) {
+        return Err(Error::InvalidProfileName);
+    }
+    Ok(name)
 }
 
 type ProfileRow = (i64, String, u64, String);

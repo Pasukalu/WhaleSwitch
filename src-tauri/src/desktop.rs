@@ -55,6 +55,16 @@ async fn delete_profile(app: AppHandle, tool: Tool, id: i64) -> Result<()> {
 }
 
 #[tauri::command]
+async fn rename_profile(app: AppHandle, tool: Tool, id: i64, name: String) -> Result<Profile> {
+    blocking(move || app.state::<Engine>().rename_profile(tool, id, &name)).await
+}
+
+#[tauri::command]
+async fn duplicate_profile(app: AppHandle, tool: Tool, id: i64, name: String) -> Result<Profile> {
+    blocking(move || app.state::<Engine>().duplicate_profile(tool, id, &name)).await
+}
+
+#[tauri::command]
 async fn snapshot(app: AppHandle, target: Target) -> Result<Snapshot> {
     blocking(move || app.state::<Engine>().snapshot(target.tool, &target.path, &target.revision)).await
 }
@@ -122,7 +132,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             discover, view, preview, save, snapshot, snapshots, compare_snapshot, restore,
-            profiles, create_profile, preview_profile, apply_profile, delete_profile,
+            profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, has_key, set_key, remove_key, probe,
         ])
         .run(tauri::generate_context!())

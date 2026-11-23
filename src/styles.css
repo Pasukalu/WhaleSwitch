@@ -161,7 +161,7 @@ h1, h2, h3, p { margin: 0; }
 .snapshot-row { display: flex; gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--edge); }
 .snapshot-row:last-child { border: 0; }
 .profile-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
-.profile-form > button { min-height: 40px; }
+.profile-form .row-actions > button { min-height: 40px; }
 .profiles-list, .profile-empty { border-top: 1px solid var(--edge); }
 .profile-empty { padding: 13px 16px 17px; font-size: 12px; }
 .profiles-list .snapshot-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -32,3 +32,19 @@ test("new CLI fields appear in field patches and Claude's endpoint prefills its 
   });
   assert.deepEqual(fieldPatch({ default_agent: "build" }, { default_agent: "plan" }), { default_agent: "plan" });
 });
+
+test("renaming and duplicating profiles preserves captured fields and leaves live files untouched", async () => {
+  const tool = "codex";
+  const view = await demo("view", { tool });
+  const target = targetOf(view);
+  const original = await demo("create_profile", { target, name: "Daily", patch: { model: "draft-model", model_verbosity: null } });
+  const copied = await demo("duplicate_profile", { tool, id: original.id, name: "Nightly" });
+  assert.notEqual(copied.id, original.id);
+  assert.deepEqual(copied.fields, original.fields);
+  await assert.rejects(() => demo("rename_profile", { tool, id: original.id, name: "nightly" }), (error) => error === "profile_name_exists");
+  await assert.rejects(() => demo("duplicate_profile", { tool: "claude", id: original.id, name: "Other tool" }), (error) => error === "profile_missing");
+  const renamed = await demo("rename_profile", { tool, id: original.id, name: " Daily work " });
+  assert.deepEqual(renamed, { ...original, name: "Daily work" });
+  assert.deepEqual(await demo("view", { tool }), view);
+  assert.deepEqual(await demo("snapshots", { tool }), []);
+});

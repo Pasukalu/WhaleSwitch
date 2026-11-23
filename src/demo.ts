@@ -34,6 +34,14 @@ function save(view: View, patch: Fields): View {
   return saved;
 }
 
+function profileName(tool: Tool, input: unknown, excluding?: number) {
+  const name = typeof input === "string" ? input.trim() : "";
+  if (!name || [...name].length > 64 || /[\p{Cc}]|sk[-_]|ghp_|github_pat_|xoxb-|sess-|eyjhb/iu.test(name)) throw "invalid_profile_name";
+  const asciiLower = (value: string) => value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+  if (profiles[tool].some((item) => item.id !== excluding && asciiLower(item.name) === asciiLower(name))) throw "profile_name_exists";
+  return name;
+}
+
 export async function demo<T>(command: string, args: Record<string, unknown>): Promise<T> {
   const target = args.target as Target | undefined;
   const tool = (target?.tool ?? args.tool ?? "codex") as Tool;
@@ -52,15 +60,21 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
     case "preview": result = changes(view.fields, patch ?? {}); break;
     case "save": result = save(view, patch ?? {}); break;
     case "profiles": result = profiles[tool]; break;
-    case "create_profile": {
-      const name = typeof args.name === "string" ? args.name.trim() : "";
-      if (!name || name.length > 64 || /[\p{Cc}]|sk[-_]|ghp_|github_pat_|xoxb-|sess-|eyjhb/iu.test(name)) throw "invalid_profile_name";
-      if (profiles[tool].some((item) => item.name.toLowerCase() === name.toLowerCase())) throw "profile_name_exists";
-      const created = { id: ++version, name, timestamp: Date.now(), fields: { ...view.fields, ...patch } };
+    case "create_profile":
+    case "duplicate_profile": {
+      if (command === "duplicate_profile" && !profile) throw "profile_missing";
+      const name = profileName(tool, args.name);
+      const fields = command === "duplicate_profile" && profile ? { ...profile.fields } : { ...view.fields, ...patch };
+      const created = { id: ++version, name, timestamp: Date.now(), fields };
       profiles[tool].unshift(created);
       result = created;
       break;
     }
+    case "rename_profile":
+      if (!profile) throw "profile_missing";
+      profile.name = profileName(tool, args.name, profile.id);
+      result = profile;
+      break;
     case "preview_profile":
       if (!profile) throw "profile_missing";
       result = { name: profile.name, changes: changes(view.fields, profile.fields) };

@@ -190,6 +190,31 @@ fn named_profiles_persist_and_apply_through_checked_backups() {
 }
 
 #[test]
+fn renaming_and_duplicating_profiles_does_not_write_live_configuration() {
+    let f = fixture(ClosedVault);
+    let tool = Tool::Codex;
+    let original = "model = 'live'\n";
+    fs::write(&f.files[0], original).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let patch: Fields = [(Field::Model, Some("captured".into()))].into_iter().collect();
+    let profile = f.engine.create_profile(tool, &view.path, &view.revision, "Work", &patch).unwrap();
+    let copy = f.engine.duplicate_profile(tool, profile.id, "Nightly").unwrap();
+    assert_ne!(copy.id, profile.id);
+    assert_eq!(copy.fields, profile.fields);
+    assert!(matches!(f.engine.rename_profile(tool, profile.id, "nightly"), Err(Error::ProfileNameExists)));
+    assert!(matches!(f.engine.duplicate_profile(Tool::Claude, profile.id, "Other"), Err(Error::ProfileMissing)));
+    assert!(matches!(f.engine.rename_profile(tool, copy.id, "  "), Err(Error::InvalidProfileName)));
+    let renamed = f.engine.rename_profile(tool, profile.id, " Work machine ").unwrap();
+    assert_eq!(renamed.id, profile.id);
+    assert_eq!(renamed.name, "Work machine");
+    assert_eq!(renamed.timestamp, profile.timestamp);
+    assert_eq!(renamed.fields, profile.fields);
+    assert_eq!(f.engine.profiles(tool).unwrap().len(), 2);
+    assert_eq!(fs::read_to_string(&f.files[0]).unwrap(), original);
+    assert!(f.engine.snapshots(tool).unwrap().is_empty());
+}
+
+#[test]
 fn edits_the_verified_endpoint_inside_claude_env_without_exposing_other_keys() {
     let f = fixture(TestVault::default());
     let tool = Tool::Claude;
