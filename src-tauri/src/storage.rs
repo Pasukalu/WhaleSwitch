@@ -62,7 +62,12 @@ impl Storage {
         let file = OpenOptions::new().create(true).truncate(false).read(true).write(true)
             .open(self.lock_dir.join("write.lock")).map_err(|_| Error::Io)?;
         fs2::FileExt::try_lock_exclusive(&file).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::WouldBlock { Error::Conflict } else { Error::Io }
+            let lock_error = fs2::lock_contended_error().raw_os_error();
+            if e.kind() == std::io::ErrorKind::WouldBlock || (lock_error.is_some() && e.raw_os_error() == lock_error) {
+                Error::Conflict
+            } else {
+                Error::Io
+            }
         })?;
         Ok(file)
     }
