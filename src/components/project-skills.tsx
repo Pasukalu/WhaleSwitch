@@ -22,9 +22,9 @@ export function ProjectSkills({ t, language }: { t: Copy; language: Language }) 
     }
   }
 
-  let emptyMessage = inventory ? t.skillsEmpty : t.skillsStart;
-  if (scanning) emptyMessage = t.skillsScanning;
-  if (previewMode) emptyMessage = t.skillsNative;
+  const emptyMessage = previewMode ? t.skillsNative
+    : scanning ? t.skillsScanning
+    : inventory ? t.skillsEmpty : t.skillsStart;
 
   return <section className="panel" aria-busy={scanning}>
     <div className="panel-head spread skills-head">
