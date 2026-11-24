@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- Restore selected fields from snapshots for Codex CLI, Claude Code, and OpenCode. Changes outside the selection stay in the current file.
+- Keep removals unchecked initially. Skip unsupported field values during selective restore, and verify the snapshot values and live revision before writing.
+- Ship a Windows x64 portable ZIP with application data alongside the executable and keys in Windows Credential Manager.
+- Show the active data folder under Settings and verify the portable package alongside all installer checksums before publishing.
+
 ## 1.4.0
 
 - Inspect the user-level edit target, known path environment variables and read-only project configuration candidates for Codex CLI, Claude Code and OpenCode.

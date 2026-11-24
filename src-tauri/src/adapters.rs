@@ -194,32 +194,51 @@ impl Tool {
     }
 
     pub(crate) fn read(self, format: Format, text: &str) -> Result<Fields> {
+        let mut fields = self.read_verified(format, text)?;
+        for &field in self.fields() {
+            fields.entry(field).or_insert(None);
+        }
+        Ok(fields)
+    }
+
+    /// Omits fields with unsupported values. An absent key is represented by None.
+    pub(crate) fn read_verified(self, format: Format, text: &str) -> Result<Fields> {
         let mut fields = Fields::new();
         match format {
             Format::Toml => {
                 let doc = text.parse::<DocumentMut>().map_err(|_| Error::InvalidConfig)?;
                 for &field in self.fields() {
-                    let value = doc.get(field.name()).and_then(|it| it.as_str())
-                        .filter(|s| self.valid_value(field, s)).map(str::to_owned);
-                    fields.insert(field, value);
+                    match doc.get(field.name()) {
+                        None => { fields.insert(field, None); }
+                        Some(item) => {
+                            if let Some(value) = item.as_str().filter(|s| self.valid_value(field, s)) {
+                                fields.insert(field, Some(value.to_owned()));
+                            }
+                        }
+                    }
                 }
             }
             _ => {
                 let comments = format == Format::Jsonc;
                 let members = jsonc::parse(text, comments)?;
                 for &field in self.fields() {
-                    let read = |source: &str, object: &jsonc::Object| {
-                        object.members.iter().find(|m| m.key == field.name())
-                            .and_then(|m| serde_json::from_str::<String>(&source[m.value.clone()]).ok())
-                            .filter(|s| self.valid_value(field, s))
+                    let read = |source: &str, object: &jsonc::Object| -> Option<Option<String>> {
+                        let Some(member) = object.members.iter().find(|m| m.key == field.name()) else {
+                            return Some(None);
+                        };
+                        serde_json::from_str::<String>(&source[member.value.clone()]).ok()
+                            .filter(|s| self.valid_value(field, s)).map(Some)
                     };
                     let value = if field == Field::AnthropicBaseUrl {
-                        members.members.iter().find(|m| m.key == "env").and_then(|m| {
-                            let source = &text[m.value.clone()];
-                            read(source, &jsonc::parse(source, comments).ok()?)
-                        })
+                        match members.members.iter().find(|m| m.key == "env") {
+                            Some(member) => {
+                                let source = &text[member.value.clone()];
+                                jsonc::parse(source, comments).ok().and_then(|object| read(source, &object))
+                            }
+                            None => Some(None),
+                        }
                     } else { read(text, &members) };
-                    fields.insert(field, value);
+                    if let Some(value) = value { fields.insert(field, value); }
                 }
             }
         }

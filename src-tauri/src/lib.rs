@@ -3,6 +3,8 @@ mod engine;
 mod jsonc;
 mod probe;
 mod profiles;
+#[cfg(any(all(windows, feature = "desktop"), test))]
+mod portable;
 mod skills;
 mod sources;
 mod storage;

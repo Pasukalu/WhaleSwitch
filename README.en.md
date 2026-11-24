@@ -17,6 +17,7 @@ Choose a platform in [GitHub Releases](https://github.com/Pasukalu/WhaleSwitch/r
 | Platform | Installer | How to install |
 | --- | --- | --- |
 | Windows x64 | `*-windows-x64.exe` | Run the NSIS installer and open WhaleSwitch from Start. |
+| Windows x64 portable | `*-windows-x64-portable.zip` | Extract all files and run `WhaleSwitch.exe`. [Portable guide](docs/PORTABLE.md#english) |
 | macOS Apple Silicon | `*-macos-arm64.dmg` | Mount the disk image and drag WhaleSwitch to Applications. |
 | macOS Intel | `*-macos-x64.dmg` | Mount the disk image and drag WhaleSwitch to Applications. |
 | Ubuntu x64 | `*-linux-x64.deb` | Open it with the installer or use `sudo apt install` with the selected local `.deb`. |
@@ -27,7 +28,7 @@ Public prerelease installers are unsigned. Release notes list the verification c
 
 1. Select a CLI and open **Config sources** to check the user-level edit target. The tool list reports PATH discovery.
 2. Edit a supported field and select **Review changes**. Confirm to write through the revision check and encrypted backup flow.
-3. Save a reusable profile, export it as JSON, or restore an earlier full file from **Snapshots**.
+3. Save a reusable profile and export it as JSON. To undo specific edits, choose **Snapshots → Restore fields**, review the diff, and select the fields to restore.
 4. Returning to the window or scanning again checks for external edits. When you have a draft, compare the previous, current, and draft values. For the same readable file, choose which conflicting fields to carry into a new draft, then review again before saving.
 
 ## Supported configuration
@@ -45,7 +46,7 @@ For OpenCode V1, WhaleSwitch also supports an absolute JSON or JSONC path in `OP
 | Config sources | Displays the edit target, path environment flags and read-only candidate files in a selected project. |
 | Project skills | Lists candidate tools, matching folder names and fingerprints for `SKILL.md` under documented project folders. |
 | Profiles | Saves, renames, duplicates and transfers portable profiles. Applying a profile lets you select individual fields, with removals starting unchecked. |
-| Snapshots | Captures, compares and restores full files at the original tool and path. |
+| Snapshots | Captures and compares snapshots at the original tool and path. Restore selected fields, or restore a full file to recover from invalid syntax. |
 | Connection test | Requests a model list from an explicitly selected OpenAI-compatible or Anthropic endpoint. Keyless OpenAI-compatible probes are limited to loopback targets. |
 
 ## Local storage
@@ -67,7 +68,7 @@ npm run tauri build
 
 `npm run dev` serves a browser demo with simulated data. The desktop app runs native file, snapshot, and credential operations.
 
-CI checks the frontend and Rust core, builds four desktop installers, and generates their SHA-256 files. The release job verifies the complete asset set against the matching app version. [Workflow](.github/workflows/checks.yml)
+CI checks the frontend and Rust core, builds four desktop installers and a Windows portable ZIP, and generates their SHA-256 files. The release job verifies the complete asset set against the matching app version. [Workflow](.github/workflows/checks.yml)
 
 [Architecture](docs/ARCHITECTURE.md) · [Code review](docs/CODE-REVIEW.md) · [Product roadmap](docs/PRODUCT-ROADMAP.md) · [MIT License](LICENSE)
 

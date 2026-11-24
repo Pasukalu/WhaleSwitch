@@ -26,9 +26,9 @@ function add(view: View, reason: Snapshot["reason"]): Snapshot {
   return entry;
 }
 
-function save(view: View, patch: Fields): View {
+function save(view: View, patch: Fields, reason: Snapshot["reason"] = "before_save"): View {
   if (!changes(view.fields, patch).length) return view;
-  if (view.exists) add(view, "before_save");
+  if (view.exists) add(view, reason);
   const saved = { ...view, exists: true, fields: { ...view.fields, ...patch }, revision: (version++).toString(16) };
   views[view.tool] = saved;
   return saved;
@@ -105,9 +105,21 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       result = add(view, "manual");
       break;
     case "compare_snapshot":
+    case "compare_snapshot_fields":
       if (!selected) throw "snapshot_missing";
       result = changes(view.fields, selected.view.fields);
       break;
+    case "restore_snapshot_fields": {
+      if (!selected) throw "snapshot_missing";
+      const selection = args.selection as Fields | undefined;
+      const pending = changes(view.fields, selected.view.fields);
+      if (!selection || !Object.keys(selection).length) throw "invalid_field";
+      if (Object.entries(selection).some(([field, value]) => !pending.some((change) => change.field === field && change.after === value))) {
+        throw "conflict";
+      }
+      result = save(view, selection, "before_restore_fields");
+      break;
+    }
     case "restore":
       if (!selected) throw "snapshot_missing";
       if (view.exists) add(view, "before_restore");

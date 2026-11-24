@@ -26,7 +26,8 @@ export type ProjectConfigSource = {
 export type ProjectConfigReport = { root: string; sources: ProjectConfigSource[] };
 export type ToolInfo = { tool: Tool; installed: boolean; executable: string | null; path: string | null; exists: boolean; issue: string | null };
 export type Change = { field: Field; before: string | null; after: string | null };
-export type Snapshot = { id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" };
+export type Snapshot = { id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" | "before_restore_fields" };
+export type RuntimeInfo = { portable: boolean; data_dir: string };
 export type Profile = { id: number; name: string; timestamp: number; fields: Fields };
 export type ProfileArchive = { version: 1; tool: Tool; name: string; fields: Fields };
 export type ProfilePreview = { name: string; changes: Change[] };
@@ -70,11 +71,11 @@ export function fieldPatch(current: Fields, draft: Fields): Fields {
   return patch;
 }
 
-export function defaultProfileSelection(changes: readonly Change[]): Field[] {
+export function defaultChangeSelection(changes: readonly Change[]): Field[] {
   return changes.filter(({ after }) => after !== null).map(({ field }) => field);
 }
 
-export function profileSelectionPatch(changes: readonly Change[], selected: readonly Field[]): Fields {
+export function selectedChangePatch(changes: readonly Change[], selected: readonly Field[]): Fields {
   const patch: Fields = {};
   const fields = new Set(selected);
   for (const { field, after } of changes) {

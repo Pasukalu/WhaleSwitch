@@ -1,6 +1,6 @@
 use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
 use crate::{scan_project_config, scan_project_skills, ConfigInspection, ProjectConfigReport, SkillInventory};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -9,6 +9,15 @@ use zeroize::Zeroizing;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Target { tool: Tool, path: String, revision: String }
+
+#[derive(Clone, Serialize)]
+struct RuntimeInfo {
+    portable: bool,
+    data_dir: String,
+}
+
+#[tauri::command]
+fn runtime_info(info: tauri::State<'_, RuntimeInfo>) -> RuntimeInfo { info.inner().clone() }
 
 #[tauri::command]
 fn discover(engine: tauri::State<'_, Engine>) -> Vec<ToolInfo> { engine.discover() }
@@ -106,6 +115,16 @@ async fn compare_snapshot(app: AppHandle, target: Target, id: i64) -> Result<Vec
 }
 
 #[tauri::command]
+async fn compare_snapshot_fields(app: AppHandle, target: Target, id: i64) -> Result<Vec<Change>> {
+    blocking(move || app.state::<Engine>().compare_snapshot_fields(target.tool, &target.path, &target.revision, id)).await
+}
+
+#[tauri::command]
+async fn restore_snapshot_fields(app: AppHandle, target: Target, id: i64, selection: Fields) -> Result<View> {
+    blocking(move || app.state::<Engine>().restore_snapshot_fields(target.tool, &target.path, &target.revision, id, &selection)).await
+}
+
+#[tauri::command]
 async fn restore(app: AppHandle, target: Target, id: i64) -> Result<View> {
     blocking(move || app.state::<Engine>().restore(target.tool, &target.path, &target.revision, id)).await
 }
@@ -188,11 +207,26 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            app.manage(Engine::new(app.path().app_local_data_dir()?));
+            let config = &app.config().app.windows[0];
+            let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
+            #[cfg(windows)]
+            let (builder, data, portable) = match crate::portable::prepare(&std::env::current_exe()?) {
+                Ok(Some(layout)) => (builder.data_directory(layout.webview), layout.data, true),
+                Ok(None) => (builder, app.path().app_local_data_dir()?, false),
+                Err(_) => return Err(std::io::Error::other(
+                    "Portable storage is unavailable. Extract WhaleSwitch to a regular writable folder.",
+                ).into()),
+            };
+            #[cfg(not(windows))]
+            let (data, portable) = (app.path().app_local_data_dir()?, false);
+            app.manage(RuntimeInfo { portable, data_dir: data.to_string_lossy().into_owned() });
+            app.manage(Engine::new(data));
+            builder.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            discover, view, inspect_config, preview, save, snapshot, snapshots, compare_snapshot, restore,
+            discover, runtime_info, view, inspect_config, preview, save, snapshot, snapshots, compare_snapshot, restore,
+            compare_snapshot_fields, restore_snapshot_fields,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
             has_key, set_key, remove_key, probe, pick_project_skills, pick_project_config,

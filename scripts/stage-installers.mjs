@@ -11,6 +11,7 @@ const targets = {
 };
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const output = "release-assets";
+const portable = `WhaleSwitch-${version}-windows-x64-portable.zip`;
 
 function installerName(target) {
   return `WhaleSwitch-${version}-${target}${targets[target][1]}`;
@@ -18,9 +19,14 @@ function installerName(target) {
 
 async function checksumLine(filename) {
   const bytes = await readFile(join(output, filename));
-  assert(bytes.length > 0, `Empty installer ${filename}`);
+  assert(bytes.length > 0, `Empty release asset ${filename}`);
   const digest = createHash("sha256").update(bytes).digest("hex");
   return `${digest}  ${filename}\n`;
+}
+
+async function stageChecksum(filename) {
+  await writeFile(join(output, filename + ".sha256"), await checksumLine(filename));
+  console.log(filename);
 }
 
 async function stage(target) {
@@ -33,12 +39,11 @@ async function stage(target) {
   const filename = installerName(target);
   await mkdir(output, { recursive: true });
   await copyFile(join(folder, files[0].name), join(output, filename));
-  await writeFile(join(output, filename + ".sha256"), await checksumLine(filename));
-  console.log(filename);
+  await stageChecksum(filename);
 }
 
 async function verify() {
-  const filenames = Object.keys(targets).map(installerName);
+  const filenames = [...Object.keys(targets).map(installerName), portable];
   const expected = filenames.flatMap((name) => [name, name + ".sha256"]);
   const received = await readdir(output, { withFileTypes: true });
   assert(received.every((entry) => entry.isFile()), "Release assets must be regular files");
@@ -47,11 +52,13 @@ async function verify() {
     const checksum = await readFile(join(output, filename + ".sha256"), "utf8");
     assert.equal(checksum, await checksumLine(filename), `SHA-256 mismatch for ${filename}`);
   }
-  console.log(`Verified ${filenames.length} installers and SHA-256 files for ${version}`);
+  console.log(`Verified ${filenames.length} release assets and SHA-256 files for ${version}`);
 }
 
 if (process.argv[2] === "--verify") {
   await verify();
+} else if (process.argv[2] === "--checksum-portable") {
+  await stageChecksum(portable);
 } else {
   await stage(process.argv[2]);
 }

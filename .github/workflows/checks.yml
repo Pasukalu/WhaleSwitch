@@ -54,6 +54,12 @@ jobs:
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
       - name: Stage installer and SHA-256
         run: node scripts/stage-installers.mjs ${{ matrix.target }}
+      - name: Stage Windows portable ZIP and SHA-256
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          ./scripts/stage-windows-portable.ps1
+          node scripts/stage-installers.mjs --checksum-portable
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:

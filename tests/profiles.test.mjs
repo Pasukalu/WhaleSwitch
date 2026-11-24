@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { demo } from "../src/demo.ts";
-import { defaultProfileSelection, fieldPatch, fieldPath, initialProbe, profileSelectionPatch, targetOf } from "../src/domain.ts";
+import { defaultChangeSelection, fieldPatch, fieldPath, initialProbe, selectedChangePatch, targetOf } from "../src/domain.ts";
 
 test("profiles capture a draft, preview changes, and back up before applying", async () => {
   const view = await demo("view", { tool: "claude" });
@@ -56,10 +56,10 @@ test("profile review defaults to keeping fields marked for removal and writes on
   const target = targetOf(current);
   const profile = await demo("create_profile", { target, name: "Foreign device", patch: { model: "remote-model", anthropic_base_url: null } });
   const { changes } = await demo("preview_profile", { target, id: profile.id });
-  const selection = profileSelectionPatch(changes, defaultProfileSelection(changes));
+  const selection = selectedChangePatch(changes, defaultChangeSelection(changes));
   assert.deepEqual(selection, { model: "remote-model" });
-  assert.deepEqual(profileSelectionPatch(changes, ["anthropic_base_url"]), { anthropic_base_url: null });
-  assert.deepEqual(profileSelectionPatch(changes, ["default_agent"]), {});
+  assert.deepEqual(selectedChangePatch(changes, ["anthropic_base_url"]), { anthropic_base_url: null });
+  assert.deepEqual(selectedChangePatch(changes, ["default_agent"]), {});
   await assert.rejects(() => demo("apply_profile", { target, id: profile.id, selection: { model: "other" } }), (error) => error === "conflict");
   const applied = await demo("apply_profile", { target, id: profile.id, selection });
   assert.equal(applied.fields.model, "remote-model");

@@ -14,7 +14,7 @@ import { ProjectSkills } from "./components/project-skills";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { acceptConfig, describeDrift, emptyConfigSession, mergeDraft, observeConfig, observedIssue, observedPath, observedView } from "./config-session";
-import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultProfileSelection, fieldPatch, fieldPath, profileSelectionPatch, sameTarget, targetOf, type Change, type ConfigInspection, type Field, type Fields, type Profile, type ProfileArchive, type ProjectConfigReport, type Snapshot, type Target, type Tool, type ToolInfo, type View } from "./domain";
+import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultChangeSelection, fieldPatch, fieldPath, selectedChangePatch, sameTarget, targetOf, type Change, type ConfigInspection, type Field, type Fields, type Profile, type ProfileArchive, type ProjectConfigReport, type RuntimeInfo, type Snapshot, type Target, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
@@ -22,6 +22,7 @@ type Tab = "config" | "sources" | "profiles" | "snapshots" | "skills" | "connect
 type Theme = "dark" | "light" | "system";
 type Review = { target: Target } & ({ kind: "save"; changes: Change[]; patch: Fields }
   | { kind: "restore" | "compare"; changes: Change[]; id: number }
+  | { kind: "restore_fields"; changes: Change[]; id: number; selected: Field[] }
   | { kind: "profile"; changes: Change[]; id: number; name: string; selected: Field[] });
 type Notice = { message: string; error: boolean };
 
@@ -71,6 +72,7 @@ export function App() {
   const [tool, setTool] = useState<Tool>("codex");
   const [tab, setTab] = useState<Tab>("config");
   const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
   const [session, setSession] = useState(emptyConfigSession);
   const [projectConfig, setProjectConfig] = useState<ProjectConfigReport | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -98,6 +100,7 @@ export function App() {
   const controlsBusy = busy || checking;
   const configLocked = controlsBusy || Boolean(drift);
   const activeReview = review && view && !drift && sameTarget(review.target, view) ? review : null;
+  const selectableReview = activeReview && "selected" in activeReview ? activeReview : null;
   const info = tools.find((entry) => entry.tool === tool);
   const filePath = session.baseline ? observedPath(session.baseline) : info?.path;
 
@@ -130,6 +133,13 @@ export function App() {
     setPreference("whaleswitch-theme", theme);
     return () => system.removeEventListener("change", apply);
   }, [theme]);
+
+  useEffect(() => {
+    let active = true;
+    if (previewMode) return;
+    void api.runtimeInfo().then((value) => { if (active) setRuntime(value); }, () => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -272,24 +282,31 @@ export function App() {
     setReview({ kind: "save", target, changes, patch });
   }
 
-  async function compare(id: number, kind: "compare" | "restore") {
+  async function compare(id: number, kind: "compare" | "restore" | "restore_fields") {
     if (!view || drift) return;
-    if (kind === "restore" && dirty && !window.confirm(t.discard)) return;
+    if (kind !== "compare" && dirty && !window.confirm(t.discard)) return;
     const target = targetOf(view);
-    const changes = await api.compareSnapshot(target, id);
-    setReview({ kind, target, changes, id });
+    if (kind === "restore_fields") {
+      const changes = await api.compareSnapshotFields(target, id);
+      setReview({ kind, target, changes, id, selected: defaultChangeSelection(changes) });
+    } else {
+      const changes = await api.compareSnapshot(target, id);
+      setReview({ kind, target, changes, id });
+    }
   }
 
   async function confirm() {
     const review = activeReview;
     if (!review || review.kind === "compare") return;
-    if (review.kind === "profile" && !review.selected.length) return;
+    if ("selected" in review && !review.selected.length) return;
     const { target } = review;
     const next = review.kind === "save" ? await api.save(target, review.patch)
-      : review.kind === "profile" ? await api.applyProfile(target, review.id, profileSelectionPatch(review.changes, review.selected))
+      : review.kind === "profile" ? await api.applyProfile(target, review.id, selectedChangePatch(review.changes, review.selected))
+      : review.kind === "restore_fields" ? await api.restoreSnapshotFields(target, review.id, selectedChangePatch(review.changes, review.selected))
       : await api.restore(target, review.id);
     applyView(next);
-    success(review.kind === "save" ? t.saved : review.kind === "profile" ? t.profileApplied : t.restored);
+    success(review.kind === "save" ? t.saved : review.kind === "profile" ? t.profileApplied
+      : review.kind === "restore_fields" ? t.restoredFields : t.restored);
     await refreshHistory(next);
   }
 
@@ -313,7 +330,7 @@ export function App() {
     if (!view || view.issue || drift || (dirty && !window.confirm(t.discard))) return;
     const target = targetOf(view);
     const result = await api.previewProfile(target, profile.id);
-    setReview({ kind: "profile", id: profile.id, ...result, target, selected: defaultProfileSelection(result.changes) });
+    setReview({ kind: "profile", id: profile.id, ...result, target, selected: defaultChangeSelection(result.changes) });
   }
 
   function editProfile(kind: ProfileEdit, profile: Profile, name: string) {
@@ -408,6 +425,14 @@ export function App() {
               </select></div>
             </div>
           </section>
+          {runtime && <section className="panel">
+            <div className="panel-head"><div className="section-icon"><HardDrive size={19}/></div><div><h2>{t.appStorage}</h2>
+              <p>{runtime.portable ? t.portableMode : t.standardStorage}</p></div></div>
+            <div className="panel-body form-stack">
+              <div className="path-row source-path"><code>{runtime.data_dir}</code></div>
+              {runtime.portable && <p className="small muted">{t.portableStorageHint}</p>}
+            </div>
+          </section>}
           <section className="panel"><div className="panel-head"><div className="section-icon"><Waves size={19}/></div><div><h2>{t.about}</h2><p>{t.aboutText}</p></div></div></section>
         </div> : <>
           <section className="hero" aria-labelledby="workspace-title">
@@ -460,8 +485,12 @@ export function App() {
                     : snapshots.length === 0 ? <Empty icon={<Layers size={23}/>} title={t.noSnapshots} subtitle={t.snapHint}/>
                     : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-row" key={snapshot.id}>
                       <div className="snapshot-icon"><Layers size={18}/></div><div className="snapshot-text"><strong>{t[snapshot.reason]}</strong><small>{date(snapshot, language)} · #{snapshot.id}</small></div>
-                      <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
-                      <Button variant="outline" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "restore"))}>{t.restore}</Button>
+                      <div className="row-actions snapshot-actions">
+                        <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
+                        <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "restore"))}>{t.restore}</Button>
+                        <Button variant="outline" size="sm" disabled={configLocked || !view || Boolean(view.issue)}
+                          onClick={() => void run(() => compare(snapshot.id, "restore_fields"))}>{t.restoreFields}</Button>
+                      </div>
                     </div>)}</div>}
                 </section>
                 : !view || view.issue ? <section className="panel">
@@ -529,13 +558,16 @@ export function App() {
       {activeReview && <DiffDialog t={t} changes={activeReview.changes} busy={busy} error={notice?.error ? notice.message : undefined} onClose={() => setReview(null)}
         title={activeReview.kind === "save" ? t.review : activeReview.kind === "profile" ? activeReview.name : `${t.ref} #${activeReview.id}`}
         hint={activeReview.kind === "profile" ? t.profileSelectionHint : activeReview.kind === "save" ? t.saveHint
-          : activeReview.kind === "restore" ? t.restoreHint : undefined}
-        selection={activeReview.kind === "profile" ? {
-          fields: activeReview.selected,
-          onChange: (selected) => setReview((current) => current?.kind === "profile" ? { ...current, selected } : current),
+          : activeReview.kind === "restore" ? t.restoreHint : activeReview.kind === "restore_fields" ? t.restoreFieldsHint : undefined}
+        selection={selectableReview ? {
+          fields: selectableReview.selected,
+          onChange: (selected) => setReview((current) => current && "selected" in current ? { ...current, selected } : current),
         } : undefined}
         action={activeReview.kind !== "compare" && (activeReview.kind === "restore" || activeReview.changes.length > 0)
-          ? <Button disabled={configLocked || (activeReview.kind === "profile" && !activeReview.selected.length)} onClick={() => void run(confirm)}>{activeReview.kind === "restore" ? t.confirmRestore : activeReview.kind === "profile" ? t.profileApplySelected : view?.exists ? t.saving : t.create}</Button>
+          ? <Button disabled={configLocked || (selectableReview !== null && !selectableReview.selected.length)} onClick={() => void run(confirm)}>
+            {activeReview.kind === "restore" ? t.confirmRestore : activeReview.kind === "profile" ? t.profileApplySelected
+              : activeReview.kind === "restore_fields" ? t.restoreFields : view?.exists ? t.saving : t.create}
+          </Button>
           : undefined}/>}
     </main>
   </div>;

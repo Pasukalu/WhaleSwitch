@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
-import type { Change, ConfigInspection, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, ConfigInspection, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, RuntimeInfo, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
@@ -14,6 +14,7 @@ function request<T>(command: string, args?: Record<string, unknown>): Promise<T>
 
 export const api = {
   discover: () => request<ToolInfo[]>("discover"),
+  runtimeInfo: () => request<RuntimeInfo>("runtime_info"),
   pickProjectSkills: () => request<SkillInventory>("pick_project_skills"),
   pickProjectConfig: () => request<ProjectConfigReport>("pick_project_config"),
   inspectConfig: (tool: Tool) => request<ConfigInspection>("inspect_config", { tool }),
@@ -33,6 +34,8 @@ export const api = {
   importProfile: (tool: Tool, archive: ProfileArchive, name: string) => request<Profile>("import_profile", { tool, archive, name }),
   exportProfileArchive: (tool: Tool, id: number) => request<void>("export_profile_archive", { tool, id }),
   compareSnapshot: (target: Target, id: number) => request<Change[]>("compare_snapshot", { target, id }),
+  compareSnapshotFields: (target: Target, id: number) => request<Change[]>("compare_snapshot_fields", { target, id }),
+  restoreSnapshotFields: (target: Target, id: number, selection: Fields) => request<View>("restore_snapshot_fields", { target, id, selection }),
   restore: (target: Target, id: number) => request<View>("restore", { target, id }),
   importArchive: (tool: Tool) => request<Fields>("import_archive", { tool }),
   exportArchive: (target: Target) => request<void>("export_archive", { target }),

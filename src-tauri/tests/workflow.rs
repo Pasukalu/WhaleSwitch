@@ -63,6 +63,104 @@ fn applies_verified_fields_without_losing_unknown_keys_or_comments() {
 }
 
 #[test]
+fn restores_selected_snapshot_values_for_each_tool() {
+    let f = fixture(TestVault::default());
+    let cases = [
+        (Tool::Codex, "model = 'old'\nopenai_base_url = 'https://prior.invalid/v1'\n",
+            "# current comment\nmodel = 'new'\nopenai_base_url = 'https://after.invalid/v1'\n[extra]\nkeep = true\n",
+            "old", "https://after.invalid/v1", "# current comment"),
+        (Tool::Claude, r#"{"model":"sonnet","env":{"ANTHROPIC_BASE_URL":"https://prior.invalid"}}"#,
+            r#"{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://after.invalid"},"unknown": {"keep":true}}"#,
+            "sonnet", "https://after.invalid", r#""unknown": {"keep":true}"#),
+        (Tool::Opencode, r#"{"model":"openai/old"}"#,
+            "{\n // current comment\n \"model\": \"openai/new\", \"default_agent\": \"build\", \"unknown\": true,\n}",
+            "openai/old", r#""default_agent": "build""#, "// current comment"),
+    ];
+    for (index, (tool, old, current, expected, untouched, unknown)) in cases.into_iter().enumerate() {
+        let path = &f.files[index];
+        fs::write(path, old).unwrap();
+        let view = f.engine.view(tool).unwrap();
+        let snapshot = f.engine.snapshot(tool, &view.path, &view.revision).unwrap();
+        fs::write(path, current).unwrap();
+        let view = f.engine.view(tool).unwrap();
+        let changes = f.engine.compare_snapshot_fields(tool, &view.path, &view.revision, snapshot.id).unwrap();
+        assert_eq!(changes.len(), 2);
+        assert!(changes.iter().any(|change| change.field == Field::Model && change.after.as_deref() == Some(expected)));
+        let forged = if tool == Tool::Opencode { "openai/forged" } else { "forged" };
+        assert!(matches!(
+            f.engine.restore_snapshot_fields(tool, &view.path, &view.revision, snapshot.id, &model(Some(forged))),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(f.engine.snapshots(tool).unwrap().len(), 1);
+        let restored = f.engine.restore_snapshot_fields(tool, &view.path, &view.revision, snapshot.id, &model(Some(expected))).unwrap();
+        assert_eq!(restored.fields[&Field::Model].as_deref(), Some(expected));
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains(untouched));
+        assert!(updated.contains(unknown));
+        let backup = f.engine.snapshots(tool).unwrap().remove(0);
+        assert_eq!(backup.reason, "before_restore_fields");
+        f.engine.restore(tool, &restored.path, &restored.revision, backup.id).unwrap();
+        assert_eq!(fs::read(path).unwrap(), current.as_bytes());
+    }
+}
+
+#[test]
+fn field_restore_can_clear_an_absent_key_and_rejects_stale_revisions() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Claude;
+    let path = &f.files[1];
+    fs::write(path, r#"{"model":"sonnet"}"#).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let snapshot = f.engine.snapshot(tool, &view.path, &view.revision).unwrap();
+    let latest = r#"{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://example.invalid","KEEP":"unchanged"}}"#;
+    fs::write(path, latest).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let selection: Fields = [(Field::AnthropicBaseUrl, None)].into_iter().collect();
+    let changes = f.engine.compare_snapshot_fields(tool, &view.path, &view.revision, snapshot.id).unwrap();
+    assert!(changes.iter().any(|change| change.field == Field::AnthropicBaseUrl && change.after.is_none()));
+    fs::write(path, format!("{latest}\n")).unwrap();
+    assert!(matches!(
+        f.engine.restore_snapshot_fields(tool, &view.path, &view.revision, snapshot.id, &selection),
+        Err(Error::Conflict)
+    ));
+    let fresh = f.engine.view(tool).unwrap();
+    let restored = f.engine.restore_snapshot_fields(tool, &fresh.path, &fresh.revision, snapshot.id, &selection).unwrap();
+    assert_eq!(restored.fields[&Field::AnthropicBaseUrl], None);
+    assert_eq!(restored.fields[&Field::Model].as_deref(), Some("opus"));
+    assert!(fs::read_to_string(path).unwrap().contains(r#""KEEP":"unchanged""#));
+}
+
+#[test]
+fn field_restore_excludes_unsupported_values_from_both_sides() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Claude;
+    let path = &f.files[1];
+    let original = r#"{"model":false,"env":{"ANTHROPIC_BASE_URL":"https://example.invalid"}}"#;
+    fs::write(path, original).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let snapshot = f.engine.snapshot(tool, &view.path, &view.revision).unwrap();
+    let current = r#"{"model":"opus","env":false}"#;
+    fs::write(path, current).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    assert!(f.engine.compare_snapshot_fields(tool, &view.path, &view.revision, snapshot.id).unwrap().is_empty());
+    assert!(matches!(
+        f.engine.restore_snapshot_fields(tool, &view.path, &view.revision, snapshot.id, &model(None)),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(fs::read_to_string(path).unwrap(), current);
+    assert_eq!(f.engine.snapshots(tool).unwrap().len(), 1);
+
+    fs::write(path, "{broken").unwrap();
+    let view = f.engine.view(tool).unwrap();
+    assert!(matches!(
+        f.engine.compare_snapshot_fields(tool, &view.path, &view.revision, snapshot.id),
+        Err(Error::InvalidConfig)
+    ));
+    f.engine.restore(tool, &view.path, &view.revision, snapshot.id).unwrap();
+    assert_eq!(fs::read_to_string(path).unwrap(), original);
+}
+
+#[test]
 fn guards_the_revision_and_config_scope() {
     let f = fixture(TestVault::default());
     let empty = f.engine.view(Tool::Codex).unwrap();

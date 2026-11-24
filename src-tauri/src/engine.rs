@@ -127,17 +127,21 @@ impl Engine {
         let state = read_state(&path, MAX_CONFIG)?;
         if state.revision() != revision { return Err(Error::Conflict); }
         let format = tool.format(&path);
+        let before = tool.read(format, state.text(format)?)?;
+        self.write_patch(tool, &path, &state, &changed_patch(&before, patch), "before_save")
+    }
+
+    fn write_patch(&self, tool: Tool, path: &Path, state: &FileState, patch: &Fields, reason: &str) -> Result<View> {
+        if patch.is_empty() { return read_config_view(tool, path); }
+        let format = tool.format(path);
         let text = state.text(format)?;
-        let before = tool.read(format, text)?;
-        let relevant = changed_patch(&before, patch);
-        if relevant.is_empty() { return read_config_view(tool, &path); }
-        let edited = Zeroizing::new(tool.apply(format, text, &relevant)?);
+        let edited = Zeroizing::new(tool.apply(format, text, patch)?);
         tool.read(format, &edited)?;
         let mut bytes = Zeroizing::new(Vec::new());
         if state.bytes.as_ref().is_some_and(|b| b.starts_with(&[0xef, 0xbb, 0xbf])) { bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]); }
         bytes.extend_from_slice(edited.as_bytes());
-        self.commit(tool, &path, &state, &bytes, "before_save")?;
-        read_config_view(tool, &path)
+        self.commit(tool, path, state, &bytes, reason)?;
+        read_config_view(tool, path)
     }
 
     pub fn snapshots(&self, tool: Tool) -> Result<Vec<Snapshot>> {
@@ -243,6 +247,38 @@ impl Engine {
         };
         let after = tool.read(format, decode(&bytes)?)?;
         Ok(difference(&before, &after))
+    }
+
+    pub fn compare_snapshot_fields(&self, tool: Tool, target: &str, revision: &str, id: i64) -> Result<Vec<Change>> {
+        let path = self.bound_target(tool, target)?;
+        let state = read_state(&path, MAX_CONFIG)?;
+        if state.revision() != revision { return Err(Error::Conflict); }
+        self.snapshot_field_changes(tool, &path, &state, id)
+    }
+
+    pub fn restore_snapshot_fields(&self, tool: Tool, target: &str, revision: &str, id: i64, selection: &Fields) -> Result<View> {
+        if selection.is_empty() { return Err(Error::InvalidField); }
+        tool.validate(selection)?;
+        let _lock = self.storage.lock()?;
+        let path = self.bound_target(tool, target)?;
+        let state = read_state(&path, MAX_CONFIG)?;
+        if state.revision() != revision { return Err(Error::Conflict); }
+        let changes = self.snapshot_field_changes(tool, &path, &state, id)?;
+        for (&field, value) in selection {
+            if !changes.iter().any(|change| change.field == field && change.after == *value) {
+                return Err(Error::Conflict);
+            }
+        }
+        self.write_patch(tool, &path, &state, selection, "before_restore_fields")
+    }
+
+    fn snapshot_field_changes(&self, tool: Tool, path: &Path, state: &FileState, id: i64) -> Result<Vec<Change>> {
+        let format = tool.format(path);
+        let current = tool.read_verified(format, state.text(format)?)?;
+        let bytes = self.storage.get(self.vault.as_ref(), tool, path, id)?;
+        let mut previous = tool.read_verified(format, decode(&bytes)?)?;
+        previous.retain(|field, _| current.contains_key(field));
+        Ok(difference(&current, &previous))
     }
 
     pub fn restore(&self, tool: Tool, target: &str, revision: &str, id: i64) -> Result<View> {
@@ -396,7 +432,7 @@ pub(crate) fn directory_exists(path: &Path) -> Result<bool> {
     }
 }
 
-fn metadata(path: &Path) -> Result<Option<fs::Metadata>> {
+pub(crate) fn metadata(path: &Path) -> Result<Option<fs::Metadata>> {
     validate_ancestors(path)?;
     match path.symlink_metadata() {
         Ok(meta) if unsafe_meta(&meta) || !meta.is_file() => Err(Error::UnsafePath),

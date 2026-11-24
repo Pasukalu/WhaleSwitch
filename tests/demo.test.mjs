@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { demo } from "../src/demo.ts";
-import { targetOf } from "../src/domain.ts";
+import { defaultChangeSelection, selectedChangePatch, targetOf } from "../src/domain.ts";
 
 test("browser workbench reviews, saves, compares and restores a simulated configuration", async () => {
   const original = await demo("view", { tool: "codex" });
@@ -28,6 +28,26 @@ test("an absent config is created without recording a prior file", async () => {
   const view = await demo("save", { target: targetOf(missing), patch: { model: "openai/demo" } });
   assert.equal(view.exists, true);
   assert.equal((await demo("snapshots", { tool: "opencode" })).length, 0);
+});
+
+test("field restore keeps unselected values and requires a matching preview revision", async () => {
+  const original = await demo("view", { tool: "claude" });
+  const snapshot = await demo("snapshot", { target: targetOf(original) });
+  const patch = { model: "opus", anthropic_base_url: "https://example.invalid" };
+  const changed = await demo("save", { target: targetOf(original), patch });
+  const target = targetOf(changed);
+  const changes = await demo("compare_snapshot_fields", { target, id: snapshot.id });
+  assert.deepEqual(defaultChangeSelection(changes), ["model"]);
+  const selection = selectedChangePatch(changes, ["model"]);
+  await assert.rejects(
+    () => demo("restore_snapshot_fields", { target, id: snapshot.id, selection: { model: "forged" } }),
+    (error) => error === "conflict",
+  );
+  const restored = await demo("restore_snapshot_fields", { target, id: snapshot.id, selection });
+  assert.deepEqual(restored.fields, { model: original.fields.model, anthropic_base_url: patch.anthropic_base_url });
+  await assert.rejects(() => demo("restore_snapshot_fields", { target, id: snapshot.id, selection }), (error) => error === "conflict");
+  const [backup] = await demo("snapshots", { tool: "claude" });
+  assert.equal(backup.reason, "before_restore_fields");
 });
 
 test("browser preview cannot send an API key or make a real request", async () => {
