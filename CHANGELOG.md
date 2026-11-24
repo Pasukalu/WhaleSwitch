@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Inspect the user-level edit target, known path environment variables and read-only project configuration candidates for Codex CLI, Claude Code and OpenCode.
+- Recheck the selected configuration on window focus and explicit refresh. Clean editors reload after external edits, file deletion, or target changes.
+- Preserve unsaved drafts and show previous, current and draft values. Merge independent edits and choose which conflicting draft fields to keep.
+- Bind diff previews and snapshot lists to the original configuration target. A changed revision or path requires a new review.
+
 ## 1.3.0
 
 - Add a bilingual, read-only project skills inventory for documented Codex CLI, Claude Code, and OpenCode project folders.

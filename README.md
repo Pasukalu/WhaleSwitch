@@ -29,9 +29,25 @@ Open the app, scan for tools, and review the resolved config path. Change fields
 | Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json` | `model`, `env.ANTHROPIC_BASE_URL` |
 | OpenCode V1/V2 | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` or `~/.config/opencode/opencode.json(c)` | `model` (`provider/model`), `default_agent` |
 
-OpenCode also accepts an absolute JSON or JSONC path from `OPENCODE_CONFIG`. Ambiguous file candidates, inline configs and custom-directory overrides stop file selection. Project configuration, terminal overrides, and organization policies can take precedence over the edited user file.
+For OpenCode V1 setups, WhaleSwitch also recognizes an absolute JSON or JSONC path in `OPENCODE_CONFIG`. Ambiguous file candidates, inline configs and custom-directory overrides stop file selection. Project configuration, terminal overrides, and organization policies can take precedence over the edited user file.
 
 The field list follows the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference), [Claude Code settings](https://code.claude.com/docs/en/settings), [Claude Code environment variables](https://code.claude.com/docs/en/env-vars), and [OpenCode V1 migration guide](https://opencode.ai/docs/migrate-v1/). OpenCode's V1 and V2 provider blocks use different schemas. WhaleSwitch edits the shared fields listed here and preserves those provider blocks.
+
+## Config sources and external edits / 配置来源与外部变更
+
+打开 **配置来源**，即可看到所选 CLI 的用户级编辑目标、相关路径环境变量是否已设置，以及可能影响会话的启动参数。选择一个项目目录后，可以查看候选文件的状态和已识别字段名。项目盘点为只读，实际生效值由 CLI 决定。
+
+In **Config sources**, check the resolved user-level edit target and which path environment variables are set in the WhaleSwitch process. Choose a project folder to list file status and recognized field names for these read-only candidates.
+
+| CLI | Project-relative candidates |
+| --- | --- |
+| Codex CLI | `.codex/config.toml` |
+| Claude Code | `.claude/settings.json`, `.claude/settings.local.json` |
+| OpenCode | `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json`, `.opencode/opencode.jsonc` |
+
+切回 WhaleSwitch 或点击 **扫描工具** 时，应用会检查所选 CLI 的用户级配置。若有未保存修改，会保留草稿并显示旧值、当前文件值和草稿。对同一文件，选择 **合并到草稿** 可保留不冲突的修改。冲突字段默认采用文件值，可勾选保留草稿值。若目标换成另一个文件或当前文件无法读取，可先保留草稿并重新检查，也可主动放弃草稿并载入当前状态。
+
+Returning to the window or scanning again checks the selected CLI's user-level file. A clean editor loads the latest state. With unsaved edits, review the previous, current, and draft values. **Merge into draft** carries independent edits forward and lets you choose a draft value for each conflicting field. Merging changes the editor state. Saving requires a fresh preview and uses the revision-checked encrypted backup flow.
 
 ## Profile, snapshot and archive behavior
 

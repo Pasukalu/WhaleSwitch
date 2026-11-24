@@ -10,6 +10,20 @@ export type Protocol = "openai" | "anthropic";
 export type Format = "toml" | "json" | "jsonc";
 export type Target = { tool: Tool; path: string; revision: string };
 export type View = Target & { format: Format; exists: boolean; fields: Fields; issue: string | null };
+export const CONFIG_ENV = {
+  codex: ["CODEX_HOME"],
+  claude: ["CLAUDE_CONFIG_DIR"],
+  opencode: ["XDG_CONFIG_HOME", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT"],
+} as const;
+type ConfigEnv = (typeof CONFIG_ENV)[Tool][number];
+export type ConfigObservation = { kind: "view"; view: View }
+  | { kind: "unavailable"; path: string | null; issue: string };
+export type ConfigInspection = { config: ConfigObservation; active_env: ConfigEnv[] | null };
+export type ProjectConfigSource = {
+  tool: Tool; scope: "project" | "project_local"; path: string;
+  exists: boolean; issue: string | null; fields: Field[];
+};
+export type ProjectConfigReport = { root: string; sources: ProjectConfigSource[] };
 export type ToolInfo = { tool: Tool; installed: boolean; executable: string | null; path: string | null; exists: boolean; issue: string | null };
 export type Change = { field: Field; before: string | null; after: string | null };
 export type Snapshot = { id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" };
@@ -40,6 +54,10 @@ export const DEFAULT_ENDPOINT: Record<Protocol, string> = {
 
 export function targetOf(view: View): Target {
   return { tool: view.tool, path: view.path, revision: view.revision };
+}
+
+export function sameTarget(left: Target, right: Target): boolean {
+  return left.tool === right.tool && left.path === right.path && left.revision === right.revision;
 }
 
 export function fieldPatch(current: Fields, draft: Fields): Fields {

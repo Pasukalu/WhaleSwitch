@@ -175,6 +175,27 @@ h1, h2, h3, p { margin: 0; }
 .skill-labels .format-tag { font-family: inherit; }
 .skill-labels .skill-match { color: var(--ice); }
 .skill-fingerprint { margin-inline-start: auto; }
+.source-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.source-heading h3, .source-detail h3 { font-size: 12px; font-weight: 650; }
+.source-path code { white-space: normal; overflow-wrap: anywhere; }
+.source-error { color: var(--danger); }
+.source-detail { display: grid; gap: 5px; }
+.source-tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; margin: 0; list-style: none; }
+.source-tags code { color: var(--text); }
+.source-tags li { overflow-wrap: anywhere; }
+.sources-project-head { border-block-start: 1px solid var(--edge); flex-wrap: wrap; }
+.source-files { list-style: none; margin: 0; padding: 0; }
+.source-file { padding: 8px 0; border-bottom: 1px solid var(--edge); display: grid; gap: 5px; }
+.source-file .source-heading > code { font-size: 11px; overflow-wrap: anywhere; }
+.drift-panel { margin-bottom: 12px; }
+.drift-panel .section-icon { color: var(--amber); }
+.drift-paths { display: grid; gap: 7px; }
+.drift-table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 12px; }
+.drift-table :is(td, th) { padding: 6px; border-bottom: 1px solid var(--edge); text-align: start; vertical-align: top; overflow-wrap: anywhere; }
+.drift-table thead { color: var(--muted); }
+.drift-table td > code { user-select: text; }
+.drift-choice { margin-top: 5px; color: var(--amber); }
+.drift-actions { flex-wrap: wrap; }
 .profile-empty { padding: 13px 16px 17px; font-size: 12px; }
 .profiles-list .snapshot-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 570; }

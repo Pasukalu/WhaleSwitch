@@ -1,5 +1,5 @@
 import { FIELD_ORDER, TOOLS } from "./domain.ts";
-import type { Change, Fields, Profile, Snapshot, Target, Tool, View } from "./domain.ts";
+import type { Change, ConfigInspection, Fields, Profile, Snapshot, Target, Tool, View } from "./domain.ts";
 
 const views: Record<Tool, View> = {
   codex: { tool: "codex", path: "~/.codex/config.toml", format: "toml", exists: true, issue: null, revision: "4e71bb19", fields: {
@@ -56,7 +56,13 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       result = TOOLS.map((id) => ({ tool: id, installed: id !== "opencode", executable: null, path: views[id].path, exists: views[id].exists, issue: null }));
       break;
     case "view": result = view; break;
-    case "snapshots": result = history[tool]; break;
+    case "inspect_config":
+      result = { config: { kind: "view", view }, active_env: [] } satisfies ConfigInspection;
+      break;
+    case "snapshots":
+      if (args.path !== undefined && args.path !== view.path) throw "conflict";
+      result = history[tool];
+      break;
     case "preview": result = changes(view.fields, patch ?? {}); break;
     case "save": result = save(view, patch ?? {}); break;
     case "profiles": result = profiles[tool]; break;

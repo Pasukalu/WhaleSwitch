@@ -1,4 +1,5 @@
 use crate::{storage::{SecretStore, Snapshot, Storage, SystemVault}, Error, Field, Fields, Format, Result, Tool, ToolInfo};
+use crate::sources::{ConfigInspection, ConfigObservation};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{fs::{self, File, Permissions}, io::{Read, Write}, path::{Path, PathBuf}};
@@ -91,22 +92,19 @@ impl Engine {
 
     pub fn view(&self, tool: Tool) -> Result<View> {
         let path = self.target(tool)?;
-        self.view_at(tool, &path)
+        read_config_view(tool, &path)
     }
 
-    fn view_at(&self, tool: Tool, path: &Path) -> Result<View> {
-        let state = read_state(path, MAX_CONFIG)?;
-        let format = tool.format(path);
-        let (fields, issue) = match state.text(format).and_then(|text| tool.read(format, text)) {
-            Ok(fields) => (fields, None),
-            Err(Error::InvalidConfig) => (Fields::new(), Some(Error::InvalidConfig)),
-            Err(error) => return Err(error),
+    pub fn inspect_config(&self, tool: Tool) -> ConfigInspection {
+        let config = match self.target(tool) {
+            Ok(path) => match read_config_view(tool, &path) {
+                Ok(view) => ConfigObservation::View { view },
+                Err(issue) => ConfigObservation::Unavailable { path: path.to_str().map(str::to_owned), issue },
+            },
+            Err(issue) => ConfigObservation::Unavailable { path: None, issue },
         };
-        Ok(View {
-            tool, path: path.to_str().ok_or(Error::UnsafePath)?.to_owned(), format,
-            exists: state.bytes.is_some(), revision: state.revision(),
-            fields, issue,
-        })
+        let active_env = if self.paths.is_none() { tool.active_config_env() } else { Vec::new() };
+        ConfigInspection { config, active_env }
     }
 
     pub fn preview(&self, tool: Tool, target: &str, revision: &str, patch: &Fields) -> Result<Vec<Change>> {
@@ -132,18 +130,22 @@ impl Engine {
         let text = state.text(format)?;
         let before = tool.read(format, text)?;
         let relevant = changed_patch(&before, patch);
-        if relevant.is_empty() { return self.view_at(tool, &path); }
+        if relevant.is_empty() { return read_config_view(tool, &path); }
         let edited = Zeroizing::new(tool.apply(format, text, &relevant)?);
         tool.read(format, &edited)?;
         let mut bytes = Zeroizing::new(Vec::new());
         if state.bytes.as_ref().is_some_and(|b| b.starts_with(&[0xef, 0xbb, 0xbf])) { bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]); }
         bytes.extend_from_slice(edited.as_bytes());
         self.commit(tool, &path, &state, &bytes, "before_save")?;
-        self.view_at(tool, &path)
+        read_config_view(tool, &path)
     }
 
     pub fn snapshots(&self, tool: Tool) -> Result<Vec<Snapshot>> {
         self.storage.list(tool, &self.target(tool)?)
+    }
+
+    pub fn snapshots_for(&self, tool: Tool, target: &str) -> Result<Vec<Snapshot>> {
+        self.storage.list(tool, &self.bound_target(tool, target)?)
     }
 
     pub fn profiles(&self, tool: Tool) -> Result<Vec<Profile>> {
@@ -253,7 +255,7 @@ impl Engine {
         if state.bytes.as_ref().is_none_or(|old| old.as_slice() != bytes.as_slice()) {
             self.commit(tool, &path, &state, &bytes, "before_restore")?;
         }
-        self.view_at(tool, &path)
+        read_config_view(tool, &path)
     }
 
     pub fn import_archive(&self, tool: Tool, source: &Path) -> Result<Fields> {
@@ -266,7 +268,7 @@ impl Engine {
 
     pub fn export_archive(&self, tool: Tool, target: &str, revision: &str, destination: &Path) -> Result<()> {
         let path = self.bound_target(tool, target)?;
-        let view = self.view_at(tool, &path)?;
+        let view = read_config_view(tool, &path)?;
         if view.revision != revision { return Err(Error::Conflict); }
         if !view.exists || view.issue.is_some() { return Err(Error::InvalidArchive); }
         let archive = Export { version: 1, tool, fields: view.fields.into_iter().filter(|(_, value)| value.is_some()).collect() };
@@ -310,6 +312,21 @@ impl Engine {
         }
         Err(Error::RecoveryRequired)
     }
+}
+
+pub(crate) fn read_config_view(tool: Tool, path: &Path) -> Result<View> {
+    let path_text = path.to_str().ok_or(Error::UnsafePath)?;
+    let state = read_state(path, MAX_CONFIG)?;
+    let format = tool.format(path);
+    let (fields, issue) = match state.text(format).and_then(|text| tool.read(format, text)) {
+        Ok(fields) => (fields, None),
+        Err(Error::InvalidConfig) => (Fields::new(), Some(Error::InvalidConfig)),
+        Err(error) => return Err(error),
+    };
+    Ok(View {
+        tool, path: path_text.to_owned(), format, exists: state.bytes.is_some(),
+        revision: state.revision(), fields, issue,
+    })
 }
 
 fn changed_patch(before: &Fields, patch: &Fields) -> Fields {
@@ -367,6 +384,16 @@ pub(crate) fn validate_ancestors(path: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub(crate) fn directory_exists(path: &Path) -> Result<bool> {
+    validate_ancestors(path)?;
+    match path.symlink_metadata() {
+        Ok(metadata) if unsafe_meta(&metadata) || !metadata.is_dir() => Err(Error::UnsafePath),
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(Error::Io),
+    }
 }
 
 fn metadata(path: &Path) -> Result<Option<fs::Metadata>> {

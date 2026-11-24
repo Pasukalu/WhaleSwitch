@@ -21,6 +21,42 @@ pub type Fields = BTreeMap<Field, Option<String>>;
 #[serde(rename_all = "snake_case")]
 pub enum Format { Toml, Json, Jsonc }
 
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ConfigEnv {
+    CodexHome,
+    ClaudeConfigDir,
+    XdgConfigHome,
+    OpencodeConfig,
+    OpencodeConfigDir,
+    OpencodeConfigContent,
+}
+
+impl ConfigEnv {
+    fn name(self) -> &'static str {
+        match self {
+            Self::CodexHome => "CODEX_HOME",
+            Self::ClaudeConfigDir => "CLAUDE_CONFIG_DIR",
+            Self::XdgConfigHome => "XDG_CONFIG_HOME",
+            Self::OpencodeConfig => "OPENCODE_CONFIG",
+            Self::OpencodeConfigDir => "OPENCODE_CONFIG_DIR",
+            Self::OpencodeConfigContent => "OPENCODE_CONFIG_CONTENT",
+        }
+    }
+
+    fn active(self) -> bool {
+        env::var_os(self.name()).is_some_and(|value| !value.is_empty())
+    }
+
+    fn path(self) -> Result<Option<PathBuf>> {
+        let path = env::var_os(self.name()).filter(|value| !value.is_empty()).map(PathBuf::from);
+        if path.as_ref().is_some_and(|path| !path.is_absolute()) {
+            return Err(Error::PathUnavailable);
+        }
+        Ok(path)
+    }
+}
+
 #[derive(Serialize)]
 pub struct ToolInfo {
     pub tool: Tool,
@@ -94,28 +130,35 @@ impl Tool {
     }
 
     pub(crate) fn path(self) -> Result<PathBuf> {
+        use ConfigEnv::*;
         let home = dirs::home_dir().ok_or(Error::PathUnavailable)?;
         match self {
-            Self::Codex => Ok(env_path("CODEX_HOME")?.unwrap_or_else(|| home.join(".codex")).join("config.toml")),
-            Self::Claude => Ok(env_path("CLAUDE_CONFIG_DIR")?.unwrap_or_else(|| home.join(".claude")).join("settings.json")),
+            Self::Codex => Ok(CodexHome.path()?.unwrap_or_else(|| home.join(".codex")).join("config.toml")),
+            Self::Claude => Ok(ClaudeConfigDir.path()?.unwrap_or_else(|| home.join(".claude")).join("settings.json")),
             Self::Opencode => {
-                if ["OPENCODE_CONFIG_CONTENT", "OPENCODE_CONFIG_DIR"].iter().any(|name| env::var_os(name).is_some_and(|v| !v.is_empty())) {
+                if OpencodeConfigContent.active() || OpencodeConfigDir.active() {
                     return Err(Error::AmbiguousConfig);
                 }
-                if let Some(path) = env_path("OPENCODE_CONFIG")? {
+                if let Some(path) = OpencodeConfig.path()? {
                     return match path.extension().and_then(|ext| ext.to_str()) {
                         Some("json" | "jsonc") => Ok(path),
                         _ => Err(Error::PathUnavailable),
                     };
                 }
-                let dir = env_path("XDG_CONFIG_HOME")?.unwrap_or_else(|| home.join(".config")).join("opencode");
-                let json = dir.join("opencode.json");
-                let jsonc = dir.join("opencode.jsonc");
-                let legacy = dir.join("config.json");
-                if present(&legacy)? || (present(&json)? && present(&jsonc)?) { return Err(Error::AmbiguousConfig); }
-                Ok(if present(&jsonc)? { jsonc } else { json })
+                let dir = XdgConfigHome.path()?.unwrap_or_else(|| home.join(".config")).join("opencode");
+                opencode_default_target(&dir)
             }
         }
+    }
+
+    pub(crate) fn active_config_env(self) -> Vec<ConfigEnv> {
+        use ConfigEnv::*;
+        let variables: &[ConfigEnv] = match self {
+            Self::Codex => &[CodexHome],
+            Self::Claude => &[ClaudeConfigDir],
+            Self::Opencode => &[XdgConfigHome, OpencodeConfig, OpencodeConfigDir, OpencodeConfigContent],
+        };
+        variables.iter().copied().filter(|variable| variable.active()).collect()
     }
 
     pub(crate) fn validate(self, fields: &Fields) -> Result<()> {
@@ -230,10 +273,17 @@ fn identifier(s: &str) -> bool {
     !s.is_empty() && s.len() <= 128 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.:@+".contains(&b))
 }
 
-fn env_path(key: &str) -> Result<Option<PathBuf>> {
-    let value = env::var_os(key).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if value.as_ref().is_some_and(|p| !p.is_absolute()) { return Err(Error::PathUnavailable); }
-    Ok(value)
+fn opencode_default_target(dir: &Path) -> Result<PathBuf> {
+    let json = dir.join("opencode.json");
+    let jsonc = dir.join("opencode.jsonc");
+    if present(&dir.join("config.json"))? {
+        return Err(Error::AmbiguousConfig);
+    }
+    let has_jsonc = present(&jsonc)?;
+    if has_jsonc && present(&json)? {
+        return Err(Error::AmbiguousConfig);
+    }
+    Ok(if has_jsonc { jsonc } else { json })
 }
 
 fn present(path: &Path) -> Result<bool> {
@@ -241,5 +291,26 @@ fn present(path: &Path) -> Result<bool> {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(_) => Err(Error::Io),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opencode_resolves_a_new_target_only_when_unambiguous() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path();
+        let json = dir.join("opencode.json");
+        let jsonc = dir.join("opencode.jsonc");
+        assert_eq!(opencode_default_target(dir).unwrap(), json);
+        std::fs::write(&json, "{}").unwrap();
+        std::fs::write(&jsonc, "{}").unwrap();
+        assert_eq!(opencode_default_target(dir), Err(Error::AmbiguousConfig));
+        std::fs::remove_file(&json).unwrap();
+        assert_eq!(opencode_default_target(dir).unwrap(), jsonc);
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        assert_eq!(opencode_default_target(dir), Err(Error::AmbiguousConfig));
     }
 }

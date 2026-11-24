@@ -1,4 +1,4 @@
-use crate::engine::{fingerprint_text_file, unsafe_meta, validate_ancestors};
+use crate::engine::{directory_exists, fingerprint_text_file, unsafe_meta};
 use crate::{Error, Result, Tool};
 use serde::Serialize;
 use std::{fs, io, path::Path};
@@ -30,7 +30,7 @@ pub struct SkillInventory {
 
 /// Inspects the documented project-root directories for folder-based skill manifests.
 pub fn scan_project_skills(root: &Path) -> Result<SkillInventory> {
-    if !is_directory(root)? {
+    if !directory_exists(root)? {
         return Err(Error::PathUnavailable);
     }
     let mut inventory = SkillInventory {
@@ -42,7 +42,7 @@ pub fn scan_project_skills(root: &Path) -> Result<SkillInventory> {
 
     for (location, tools) in LOCATIONS {
         let directory = root.join(location);
-        let children = match is_directory(&directory) {
+        let children = match directory_exists(&directory) {
             Ok(false) => continue,
             Ok(true) => fs::read_dir(&directory).map_err(|_| Error::Io),
             Err(error) => Err(error),
@@ -97,16 +97,6 @@ fn read_entry(child: io::Result<fs::DirEntry>, location: &str, tools: &'static [
         return Ok(None);
     };
     Ok(Some(SkillEntry { path: format!("{location}/{name}/SKILL.md"), name, tools, fingerprint, same_name: false }))
-}
-
-fn is_directory(path: &Path) -> Result<bool> {
-    validate_ancestors(path)?;
-    match path.symlink_metadata() {
-        Ok(metadata) if unsafe_meta(&metadata) || !metadata.is_dir() => Err(Error::UnsafePath),
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(_) => Err(Error::Io),
-    }
 }
 
 #[cfg(test)]

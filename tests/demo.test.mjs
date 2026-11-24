@@ -36,3 +36,12 @@ test("browser preview cannot send an API key or make a real request", async () =
   await assert.rejects(() => demo("set_key", { input, secret: "fake-key-for-test" }), (error) => error === "preview_only");
   await assert.rejects(() => demo("probe", { input }), (error) => error === "preview_only");
 });
+
+test("browser preview inspects only fixture settings and keeps snapshot lists bound to the displayed path", async () => {
+  const current = await demo("inspect_config", { tool: "claude" });
+  assert.equal(current.config.kind, "view");
+  assert.equal(current.config.view.path, "~/.claude/settings.json");
+  assert.deepEqual(current.active_env, []);
+  await assert.rejects(() => demo("pick_project_config", {}), (error) => error === "preview_only");
+  await assert.rejects(() => demo("snapshots", { tool: "claude", path: "/wrong/settings.json" }), (error) => error === "conflict");
+});

@@ -1,8 +1,13 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
-import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, ConfigInspection, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
+export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
+  return getCurrentWindow().onFocusChanged(({ payload }) => { if (payload) onFocus(); });
+}
+
 function request<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return previewMode ? demo<T>(command, args ?? {}) : invoke<T>(command, args);
 }
@@ -10,10 +15,12 @@ function request<T>(command: string, args?: Record<string, unknown>): Promise<T>
 export const api = {
   discover: () => request<ToolInfo[]>("discover"),
   pickProjectSkills: () => request<SkillInventory>("pick_project_skills"),
+  pickProjectConfig: () => request<ProjectConfigReport>("pick_project_config"),
+  inspectConfig: (tool: Tool) => request<ConfigInspection>("inspect_config", { tool }),
   view: (tool: Tool) => request<View>("view", { tool }),
   preview: (target: Target, patch: Fields) => request<Change[]>("preview", { target, patch }),
   save: (target: Target, patch: Fields) => request<View>("save", { target, patch }),
-  snapshots: (tool: Tool) => request<Snapshot[]>("snapshots", { tool }),
+  snapshots: (tool: Tool, path: string) => request<Snapshot[]>("snapshots", { tool, path }),
   snapshot: (target: Target) => request<Snapshot>("snapshot", { target }),
   profiles: (tool: Tool) => request<Profile[]>("profiles", { tool }),
   createProfile: (target: Target, name: string, patch: Fields) => request<Profile>("create_profile", { target, name, patch }),

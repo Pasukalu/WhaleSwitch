@@ -1,30 +1,37 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpFromLine, BookOpen, Bookmark, Boxes, Check, ChevronRight, CircleAlert, Cloud, CodeXml,
-  FileCode2, FileQuestion, HardDrive, History, Languages, Layers, Moon, Plus, RefreshCw, Settings2,
+  FileCode2, FileQuestion, FolderTree, HardDrive, History, Languages, Layers, Moon, Plus, RefreshCw, Settings2,
   ShieldCheck, Sun, Terminal, Waves,
 } from "lucide-react";
-import { api, previewMode } from "./api";
+import { api, onNativeWindowFocus, previewMode } from "./api";
+import { ConfigDriftPanel } from "./components/config-drift";
+import { ConfigSources } from "./components/config-sources";
 import { Connection } from "./components/connection";
 import { DiffDialog } from "./components/diff-dialog";
 import { Profiles, type ProfileEdit } from "./components/profiles";
 import { ProjectSkills } from "./components/project-skills";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultProfileSelection, fieldPatch, fieldPath, profileSelectionPatch, targetOf, type Change, type Field, type Fields, type Profile, type ProfileArchive, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
+import { acceptConfig, describeDrift, emptyConfigSession, mergeDraft, observeConfig, observedIssue, observedPath, observedView } from "./config-session";
+import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultProfileSelection, fieldPatch, fieldPath, profileSelectionPatch, sameTarget, targetOf, type Change, type ConfigInspection, type Field, type Fields, type Profile, type ProfileArchive, type ProjectConfigReport, type Snapshot, type Target, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
-type Tab = "config" | "profiles" | "snapshots" | "skills" | "connectivity" | "settings";
+type Tab = "config" | "sources" | "profiles" | "snapshots" | "skills" | "connectivity" | "settings";
 type Theme = "dark" | "light" | "system";
-type Review = { kind: "save"; changes: Change[]; patch: Fields }
+type Review = { target: Target } & ({ kind: "save"; changes: Change[]; patch: Fields }
   | { kind: "restore" | "compare"; changes: Change[]; id: number }
-  | { kind: "profile"; changes: Change[]; id: number; name: string; selected: Field[] };
+  | { kind: "profile"; changes: Change[]; id: number; name: string; selected: Field[] });
 type Notice = { message: string; error: boolean };
 
 const TOOL_ICON = { codex: Terminal, claude: Cloud, opencode: CodeXml };
-const TABS = [{ id: "config", icon: FileCode2 }, { id: "profiles", icon: Bookmark },
+const TABS = [{ id: "config", icon: FileCode2 }, { id: "sources", icon: FolderTree }, { id: "profiles", icon: Bookmark },
   { id: "snapshots", icon: History }, { id: "skills", icon: BookOpen }, { id: "connectivity", icon: Activity }] as const;
+const RECHECK_ERRORS = new Set([
+  "conflict", "path_unavailable", "ambiguous_config", "unsafe_path", "file_too_large",
+  "invalid_config", "io", "recovery_required",
+]);
 
 function setPreference(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch { /* ephemeral preferences */ }
@@ -64,23 +71,51 @@ export function App() {
   const [tool, setTool] = useState<Tool>("codex");
   const [tab, setTab] = useState<Tab>("config");
   const [tools, setTools] = useState<ToolInfo[]>([]);
-  const [view, setView] = useState<View | null>(null);
-  const [draft, setDraft] = useState<Fields>({});
+  const [session, setSession] = useState(emptyConfigSession);
+  const [projectConfig, setProjectConfig] = useState<ProjectConfigReport | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [problem, setProblem] = useState<unknown>(null);
   const [historyProblem, setHistoryProblem] = useState<unknown>(null);
   const [profilesProblem, setProfilesProblem] = useState<unknown>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const inspectionInFlight = useRef<symbol | null>(null);
+  const taskInFlight = useRef(false);
+  const focusAfterTask = useRef(false);
   const t = copy[language];
+  const view = observedView(session.baseline);
+  const baselineIssue = observedIssue(session.baseline);
+  const viewPath = view?.path;
+  const loading = session.baseline === null;
+  const { draft } = session;
   const patch = view ? fieldPatch(view.fields, draft) : {};
   const dirty = Object.keys(patch).length > 0;
+  const drift = describeDrift(session);
+  const controlsBusy = busy || checking;
+  const configLocked = controlsBusy || Boolean(drift);
+  const activeReview = review && view && !drift && sameTarget(review.target, view) ? review : null;
   const info = tools.find((entry) => entry.tool === tool);
+  const filePath = session.baseline ? observedPath(session.baseline) : info?.path;
+
+  const checkConfig = useCallback(() => {
+    if (inspectionInFlight.current || taskInFlight.current) return;
+    const ticket = Symbol();
+    inspectionInFlight.current = ticket;
+    setChecking(true);
+    const receive = (inspection: ConfigInspection) => {
+      if (inspectionInFlight.current !== ticket) return;
+      inspectionInFlight.current = null;
+      setSession((current) => observeConfig(current, inspection));
+      setChecking(false);
+    };
+    void api.inspectConfig(tool).then(receive, (error: unknown) => {
+      receive({ config: { kind: "unavailable", path: null, issue: typeof error === "string" ? error : "io" }, active_env: null });
+    });
+  }, [tool]);
 
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
@@ -98,29 +133,60 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    void api.discover().then((value) => { if (active) setTools(value); }, (error) => {
-      if (active) setProblem(error);
+    void api.discover().then((value) => { if (active) setTools(value); }, () => {
+      if (active) setTools([]);
     });
     return () => { active = false; };
   }, [refresh]);
 
   useEffect(() => {
+    checkConfig();
+    return () => { inspectionInFlight.current = null; };
+  }, [checkConfig]);
+
+  useEffect(() => {
+    if (previewMode) return;
     let active = true;
-    setLoading(true);
-    setView(null);
-    setDraft({});
+    let unlisten: (() => void) | undefined;
+    const onFocus = () => {
+      if (!active) return;
+      if (taskInFlight.current) focusAfterTask.current = true;
+      else checkConfig();
+    };
+    void onNativeWindowFocus(onFocus).then((dispose) => {
+      if (active) unlisten = dispose;
+      else dispose();
+    }, () => {
+      if (!active) return;
+      window.addEventListener("focus", onFocus);
+      unlisten = () => window.removeEventListener("focus", onFocus);
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [checkConfig]);
+
+  useEffect(() => {
+    if (review && !activeReview) setReview(null);
+  }, [review, activeReview]);
+
+  useEffect(() => {
+    let active = true;
     setSnapshots([]);
+    setHistoryProblem(null);
+    if (viewPath !== undefined) {
+      void api.snapshots(tool, viewPath).then((value) => { if (active) setSnapshots(value); },
+        (error) => { if (active) setHistoryProblem(error); });
+    }
+    return () => { active = false; };
+  }, [tool, viewPath, refresh]);
+
+  useEffect(() => {
+    let active = true;
     setProfiles([]);
     setProfilesLoading(true);
-    setProblem(null);
-    setHistoryProblem(null);
     setProfilesProblem(null);
-    setNotice(null);
-    setReview(null);
-    void api.view(tool).then((value) => {
-      if (active) { setView(value); setDraft(value.fields); setLoading(false); }
-    }, (error) => { if (active) { setProblem(error); setLoading(false); } });
-    void api.snapshots(tool).then((value) => { if (active) setSnapshots(value); }, (error) => { if (active) setHistoryProblem(error); });
     void api.profiles(tool).then((value) => {
       if (active) { setProfiles(value); setProfilesLoading(false); }
     }, (error) => {
@@ -130,77 +196,112 @@ export function App() {
   }, [tool, refresh]);
 
   async function run(task: () => Promise<void>): Promise<boolean> {
-    if (busy) return false;
+    if (taskInFlight.current || inspectionInFlight.current) return false;
+    taskInFlight.current = true;
+    let recheck = false;
     setBusy(true);
     setNotice(null);
     try { await task(); return true; }
     catch (err) {
       if (err !== "cancelled") setNotice({ message: errorText(err, language), error: true });
+      recheck = typeof err === "string" && RECHECK_ERRORS.has(err);
+      if (recheck) setReview(null);
       return false;
     }
-    finally { setBusy(false); }
+    finally {
+      taskInFlight.current = false;
+      setBusy(false);
+      const shouldCheck = recheck || focusAfterTask.current;
+      focusAfterTask.current = false;
+      if (shouldCheck) checkConfig();
+    }
   }
 
-  async function refreshHistory() {
-    try { setSnapshots(await api.snapshots(tool)); setHistoryProblem(null); }
+  async function refreshHistory(next: View) {
+    try { setSnapshots(await api.snapshots(next.tool, next.path)); setHistoryProblem(null); }
     catch (error) { setHistoryProblem(error); }
   }
 
   function choose(next: Tool) {
     if (next !== tool && dirty && !window.confirm(t.discard)) return;
-    if (next !== tool) { setView(null); setLoading(true); }
+    if (next !== tool) {
+      inspectionInFlight.current = null;
+      setChecking(false);
+      setSession(emptyConfigSession);
+      setSnapshots([]);
+      setProfiles([]);
+      setReview(null);
+      setNotice(null);
+    }
     setTool(next);
-    setTab("config");
+    if (tab !== "sources") setTab("config");
   }
 
   function reload() {
-    if (dirty && !window.confirm(t.discard)) return;
+    setNotice(null);
+    checkConfig();
     setRefresh((previous) => previous + 1);
+  }
+
+  function updateDraft(update: (previous: Fields) => Fields) {
+    setSession((current) => ({ ...current, draft: update(current.draft), autoChange: null }));
+  }
+
+  function resolveDrift(keep?: Field[]) {
+    if (!drift || taskInFlight.current || inspectionInFlight.current || (keep && !drift.canMerge)) return;
+    setSession((current) => {
+      if (current.latest !== drift.latest) return current;
+      return keep ? mergeDraft(current, keep) : acceptConfig(drift.latest);
+    });
+    setReview(null);
+    setTab("config");
+    success(keep ? t.driftMerged : t.driftLoaded);
   }
 
   function success(message: string) { setNotice({ message, error: false }); }
 
   function applyView(next: View) {
-    setView(next);
-    setDraft(next.fields);
-    setTools((list) => list.map((entry) => entry.tool === next.tool ? { ...entry, exists: next.exists, issue: null } : entry));
+    setSession((current) => acceptConfig({ config: { kind: "view", view: next }, active_env: current.latest?.active_env ?? null }));
     setReview(null);
   }
 
   async function preview() {
-    if (!view) return;
-    const changes = await api.preview(targetOf(view), patch);
-    setReview({ kind: "save", changes, patch });
+    if (!view || drift) return;
+    const target = targetOf(view);
+    const changes = await api.preview(target, patch);
+    setReview({ kind: "save", target, changes, patch });
   }
 
   async function compare(id: number, kind: "compare" | "restore") {
-    if (!view) return;
+    if (!view || drift) return;
     if (kind === "restore" && dirty && !window.confirm(t.discard)) return;
-    const changes = await api.compareSnapshot(targetOf(view), id);
-    setReview({ kind, changes, id });
+    const target = targetOf(view);
+    const changes = await api.compareSnapshot(target, id);
+    setReview({ kind, target, changes, id });
   }
 
   async function confirm() {
-    if (!view || !review || review.kind === "compare") return;
+    const review = activeReview;
+    if (!review || review.kind === "compare") return;
     if (review.kind === "profile" && !review.selected.length) return;
-    const target = targetOf(view);
+    const { target } = review;
     const next = review.kind === "save" ? await api.save(target, review.patch)
       : review.kind === "profile" ? await api.applyProfile(target, review.id, profileSelectionPatch(review.changes, review.selected))
       : await api.restore(target, review.id);
     applyView(next);
     success(review.kind === "save" ? t.saved : review.kind === "profile" ? t.profileApplied : t.restored);
-    await refreshHistory();
+    await refreshHistory(next);
   }
 
   async function capture() {
-    if (!view) return;
+    if (!view || drift) return;
     const snapshot = await api.snapshot(targetOf(view));
     setSnapshots((previous) => [snapshot, ...previous]);
     success(t.madeSnapshot);
   }
 
   async function createProfile(name: string) {
-    if (!view || view.issue) return false;
+    if (!view || view.issue || drift) return false;
     return run(async () => {
       const created = await api.createProfile(targetOf(view), name, patch);
       setProfiles((previous) => [created, ...previous]);
@@ -209,9 +310,10 @@ export function App() {
   }
 
   async function previewProfile(profile: Profile) {
-    if (!view || view.issue || (dirty && !window.confirm(t.discard))) return;
-    const result = await api.previewProfile(targetOf(view), profile.id);
-    setReview({ kind: "profile", id: profile.id, ...result, selected: defaultProfileSelection(result.changes) });
+    if (!view || view.issue || drift || (dirty && !window.confirm(t.discard))) return;
+    const target = targetOf(view);
+    const result = await api.previewProfile(target, profile.id);
+    setReview({ kind: "profile", id: profile.id, ...result, target, selected: defaultProfileSelection(result.changes) });
   }
 
   function editProfile(kind: ProfileEdit, profile: Profile, name: string) {
@@ -253,7 +355,7 @@ export function App() {
 
   async function importArchive() {
     const imported = await api.importArchive(tool);
-    setDraft((previous) => ({ ...previous, ...imported }));
+    updateDraft((previous) => ({ ...previous, ...imported }));
     success(t.imported);
   }
 
@@ -287,7 +389,7 @@ export function App() {
         <div className="top-actions">
           <Button variant="ghost" size="icon" aria-label={t.language} title={t.language} onClick={() => setLanguage(language === "zh" ? "en" : "zh")}><Languages/></Button>
           <Button variant="ghost" size="icon" aria-label={t.appearance} title={t.appearance} onClick={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>{theme === "light" ? <Sun/> : <Moon/>}</Button>
-          <Button variant="outline" size="sm" disabled={busy || loading} onClick={reload}><RefreshCw/>{t.scan}</Button>
+          <Button variant="outline" size="sm" disabled={controlsBusy || loading} aria-busy={checking} onClick={reload}><RefreshCw/>{t.scan}</Button>
         </div>
       </header>
 
@@ -310,7 +412,7 @@ export function App() {
         </div> : <>
           <section className="hero" aria-labelledby="workspace-title">
             <div className="hero-grid"/>
-            <div className="hero-text"><div className="hero-status"><span className={`dot ${view?.exists && !view.issue ? "live" : ""}`}/>{loading ? t.loading : problem || view?.issue ? t.unavailable : view?.exists ? t.ready : t.noFile}</div>
+            <div className="hero-text"><div className="hero-status"><span className={`dot ${view?.exists && !view.issue && !drift ? "live" : ""}`}/>{loading ? t.loading : drift ? t.driftTitle : baselineIssue ? t.unavailable : view?.exists ? t.ready : t.noFile}</div>
               <h1 id="workspace-title">{TOOL_NAMES[tool]}</h1><p>{t.intro}</p>
             </div>
             <div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="art-glow"/>
@@ -325,17 +427,26 @@ export function App() {
             {dirty && <span className="unsaved"><span className="dot"/>{t.modified}</span>}
           </nav>
 
-          {notice && !review && <div role={notice.error ? "alert" : "status"} className={notice.error ? "inline-message error" : "inline-message success"}>
+          {notice && !activeReview && <div role={notice.error ? "alert" : "status"} className={notice.error ? "inline-message error" : "inline-message success"}>
             {notice.error ? <CircleAlert size={17}/> : <Check size={17}/>}<span>{notice.message}</span>
           </div>}
+          {session.autoChange && <div className="inline-message" role="status">
+            <RefreshCw size={17}/><span>{t.driftReasons[session.autoChange]} {t.driftAuto}</span>
+          </div>}
+          {drift && <ConfigDriftPanel t={t} language={language} change={drift} busy={controlsBusy}
+            key={JSON.stringify([observedPath(drift.latest.config), observedView(drift.latest.config)?.revision, observedIssue(drift.latest.config)])}
+            onCheck={checkConfig} onMerge={resolveDrift} onDiscard={() => resolveDrift()}/>}
 
           <div className="dashboard-grid">
             <div className="dashboard-main">
               {tab === "connectivity" ? <Connection key={`${tool}/${view?.revision ?? ""}`} t={t} language={language} view={view} tool={tool}/>
                 : tab === "skills" ? <ProjectSkills t={t} language={language}/>
+                : tab === "sources" ? <ConfigSources t={t} language={language} tool={tool} inspection={session.latest}
+                  report={projectConfig} busy={controlsBusy} native={!previewMode}
+                  onPick={() => void run(async () => { setProjectConfig(await api.pickProjectConfig()); })}/>
                 : loading ? <section className="panel"><Empty icon={<RefreshCw size={22}/>} title={t.loading} subtitle={t.data}/></section>
                 : tab === "profiles" ? <Profiles key={tool} t={t} language={language} profiles={profiles}
-                  available={Boolean(view && !view.issue)} dirty={dirty} busy={busy} loading={profilesLoading}
+                  available={Boolean(view && !view.issue && !drift)} dirty={dirty} busy={controlsBusy} loading={profilesLoading}
                   error={profilesProblem ? errorText(profilesProblem, language) : null}
                   onCreate={createProfile} onApply={(profile) => void run(() => previewProfile(profile))}
                   onRemove={(profile) => void run(() => removeProfile(profile))} onEdit={editProfile}
@@ -343,19 +454,19 @@ export function App() {
                   onExport={(profile) => void run(() => exportProfile(profile))}/>
                 : tab === "snapshots" ? <section className="panel">
                   <div className="panel-head spread"><div className="head-label"><div className="section-icon"><History size={19}/></div><div><h2>{t.snapshots}</h2><p>{t.safeStorage}</p></div></div>
-                    <Button variant="outline" size="sm" disabled={busy || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>
+                    <Button variant="outline" size="sm" disabled={configLocked || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>
                   </div>
                   {historyProblem ? <div className="panel-body"><div className="inline-message error" role="alert"><CircleAlert size={17}/>{errorText(historyProblem, language)}</div></div>
                     : snapshots.length === 0 ? <Empty icon={<Layers size={23}/>} title={t.noSnapshots} subtitle={t.snapHint}/>
                     : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-row" key={snapshot.id}>
                       <div className="snapshot-icon"><Layers size={18}/></div><div className="snapshot-text"><strong>{t[snapshot.reason]}</strong><small>{date(snapshot, language)} · #{snapshot.id}</small></div>
-                      <Button variant="ghost" size="sm" disabled={busy || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
-                      <Button variant="outline" size="sm" disabled={busy || !view} onClick={() => void run(() => compare(snapshot.id, "restore"))}>{t.restore}</Button>
+                      <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
+                      <Button variant="outline" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "restore"))}>{t.restore}</Button>
                     </div>)}</div>}
                 </section>
                 : !view || view.issue ? <section className="panel">
-                  <Empty icon={<CircleAlert size={23}/>} title={t.unavailable} subtitle={errorText(view?.issue ?? problem, language)}/>
-                  <div className="panel-footer"><Button variant="outline" disabled={busy} onClick={reload}><RefreshCw/>{t.reload}</Button></div>
+                  <Empty icon={<CircleAlert size={23}/>} title={t.unavailable} subtitle={errorText(baselineIssue, language)}/>
+                  <div className="panel-footer"><Button variant="outline" disabled={controlsBusy} onClick={reload}><RefreshCw/>{t.reload}</Button></div>
                 </section>
                 : <section className="panel">
                   <div className="panel-head spread"><div className="head-label"><div className="section-icon"><FileCode2 size={19}/></div><div><h2>{t.docs}</h2><p>{t.fieldsIntro}</p></div></div>
@@ -366,19 +477,26 @@ export function App() {
                     {FIELD_ORDER.filter((field) => field in view.fields).map((field) => <div className="field" key={field}>
                       <label htmlFor={field}>{t[field]} <code>{fieldPath(field)}</code></label>
                       {FIELD_OPTIONS[field] ?
-                        <select id={field} className="ui-input select mono" value={draft[field] ?? ""} disabled={busy} onChange={(e) => setDraft({ ...draft, [field]: e.target.value || null })}>
+                        <select id={field} className="ui-input select mono" value={draft[field] ?? ""} disabled={configLocked} onChange={(event) => {
+                          const value = event.currentTarget.value || null;
+                          updateDraft((previous) => ({ ...previous, [field]: value }));
+                        }}>
                           <option value="">{t.defaultValue}</option>{FIELD_OPTIONS[field]?.map((option) => <option key={option}>{option}</option>)}
                         </select>
-                        : <Input id={field} className="mono" value={draft[field] ?? ""} placeholder={t.defaultValue} disabled={busy} spellCheck={false} maxLength={field.endsWith("_base_url") ? 512 : 180} onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}/>}
+                        : <Input id={field} className="mono" value={draft[field] ?? ""} placeholder={t.defaultValue} disabled={configLocked}
+                          spellCheck={false} maxLength={field.endsWith("_base_url") ? 512 : 180} onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            updateDraft((previous) => ({ ...previous, [field]: value }));
+                          }}/>}
                       <small>{fieldHint(field, t, tool)}</small>
                     </div>)}
                   </div>
                   <div className="panel-footer spread">
                     <div className="row-actions">
-                      <Button variant="ghost" size="sm" disabled={busy || previewMode} onClick={() => void run(importArchive)}><ArrowDownToLine/>{t.import}</Button>
-                      <Button variant="ghost" size="sm" disabled={busy || !view.exists || previewMode} onClick={() => void run(async () => { await api.exportArchive(targetOf(view)); success(t.exported); })}><ArrowUpFromLine/>{t.export}</Button>
+                      <Button variant="ghost" size="sm" disabled={configLocked || previewMode} onClick={() => void run(importArchive)}><ArrowDownToLine/>{t.import}</Button>
+                      <Button variant="ghost" size="sm" disabled={configLocked || !view.exists || previewMode} onClick={() => void run(async () => { await api.exportArchive(targetOf(view)); success(t.exported); })}><ArrowUpFromLine/>{t.export}</Button>
                     </div>
-                    <Button disabled={busy || !dirty} onClick={() => void run(preview)}>{t.review}<ChevronRight/></Button>
+                    <Button disabled={configLocked || !dirty} onClick={() => void run(preview)}>{t.review}<ChevronRight/></Button>
                   </div>
                 </section>}
             </div>
@@ -390,17 +508,17 @@ export function App() {
                   <div className="metadata"><span>{t.selected}</span><strong>{TOOL_NAMES[tool]}</strong></div>
                   <div className="metadata"><span>{t.format}</span><code>{view?.format.toUpperCase() ?? "—"}</code></div>
                   <div className="metadata"><span>{t.revision}</span><code>{view?.exists ? view.revision.slice(0, 8) : "—"}</code></div>
-                  <div className="path-row"><span>{t.file}</span><code title={view?.path ?? info?.path ?? ""}>{view?.path ?? info?.path ?? "—"}</code></div>
+                  <div className="path-row"><span>{t.file}</span><code title={filePath ?? ""}>{filePath ?? "—"}</code></div>
                 </div>
               </section>
               <section className="panel detail-panel">
                 <div className="panel-head"><div className="section-icon"><History size={18}/></div><div><h2>{t.recent}</h2><p>{snapshots.length} {t.snapshotCount}</p></div></div>
                 {snapshots.length > 0 ? <div className="side-body recent-list">
-                  {snapshots.slice(0, 3).map((snapshot) => <button key={snapshot.id} disabled={busy || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>
+                  {snapshots.slice(0, 3).map((snapshot) => <button key={snapshot.id} disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>
                     <span><strong>{t[snapshot.reason]}</strong><small>{date(snapshot, language)}</small></span><ChevronRight size={15}/>
                   </button>)}
                 </div> : <div className="side-body muted small">{t.snapHint}</div>}
-                <div className="side-footer"><Button variant="ghost" size="sm" disabled={busy || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button></div>
+                <div className="side-footer"><Button variant="ghost" size="sm" disabled={configLocked || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button></div>
               </section>
               <div className="security-note"><ShieldCheck size={17}/><span>{t.safeStorage}</span></div>
             </aside>
@@ -408,16 +526,16 @@ export function App() {
         </>}
       </div>
 
-      {review && <DiffDialog t={t} changes={review.changes} busy={busy} error={notice?.error ? notice.message : undefined} onClose={() => setReview(null)}
-        title={review.kind === "save" ? t.review : review.kind === "profile" ? review.name : `${t.ref} #${review.id}`}
-        hint={review.kind === "profile" ? t.profileSelectionHint : review.kind === "save" ? t.saveHint
-          : review.kind === "restore" ? t.restoreHint : undefined}
-        selection={review.kind === "profile" ? {
-          fields: review.selected,
+      {activeReview && <DiffDialog t={t} changes={activeReview.changes} busy={busy} error={notice?.error ? notice.message : undefined} onClose={() => setReview(null)}
+        title={activeReview.kind === "save" ? t.review : activeReview.kind === "profile" ? activeReview.name : `${t.ref} #${activeReview.id}`}
+        hint={activeReview.kind === "profile" ? t.profileSelectionHint : activeReview.kind === "save" ? t.saveHint
+          : activeReview.kind === "restore" ? t.restoreHint : undefined}
+        selection={activeReview.kind === "profile" ? {
+          fields: activeReview.selected,
           onChange: (selected) => setReview((current) => current?.kind === "profile" ? { ...current, selected } : current),
         } : undefined}
-        action={review.kind !== "compare" && (review.kind === "restore" || review.changes.length > 0)
-          ? <Button disabled={busy || (review.kind === "profile" && !review.selected.length)} onClick={() => void run(confirm)}>{review.kind === "restore" ? t.confirmRestore : review.kind === "profile" ? t.profileApplySelected : view?.exists ? t.saving : t.create}</Button>
+        action={activeReview.kind !== "compare" && (activeReview.kind === "restore" || activeReview.changes.length > 0)
+          ? <Button disabled={configLocked || (activeReview.kind === "profile" && !activeReview.selected.length)} onClick={() => void run(confirm)}>{activeReview.kind === "restore" ? t.confirmRestore : activeReview.kind === "profile" ? t.profileApplySelected : view?.exists ? t.saving : t.create}</Button>
           : undefined}/>}
     </main>
   </div>;

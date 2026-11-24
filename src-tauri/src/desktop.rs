@@ -1,5 +1,5 @@
 use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
-use crate::{scan_project_skills, SkillInventory};
+use crate::{scan_project_config, scan_project_skills, ConfigInspection, ProjectConfigReport, SkillInventory};
 use serde::Deserialize;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -15,15 +15,26 @@ fn discover(engine: tauri::State<'_, Engine>) -> Vec<ToolInfo> { engine.discover
 
 #[tauri::command]
 async fn pick_project_skills(app: AppHandle) -> Result<SkillInventory> {
-    blocking(move || {
-        let root = app.dialog().file().blocking_pick_folder().ok_or(Error::Cancelled)?
-            .into_path().map_err(|_| Error::UnsafePath)?;
-        scan_project_skills(&root)
-    }).await
+    blocking(move || scan_project_skills(&pick_project_folder(&app)?)).await
+}
+
+#[tauri::command]
+async fn pick_project_config(app: AppHandle) -> Result<ProjectConfigReport> {
+    blocking(move || scan_project_config(&pick_project_folder(&app)?)).await
+}
+
+fn pick_project_folder(app: &AppHandle) -> Result<PathBuf> {
+    app.dialog().file().blocking_pick_folder().ok_or(Error::Cancelled)?
+        .into_path().map_err(|_| Error::UnsafePath)
 }
 
 #[tauri::command]
 fn view(engine: tauri::State<'_, Engine>, tool: Tool) -> Result<View> { engine.view(tool) }
+
+#[tauri::command]
+async fn inspect_config(app: AppHandle, tool: Tool) -> Result<ConfigInspection> {
+    blocking(move || Ok(app.state::<Engine>().inspect_config(tool))).await
+}
 
 #[tauri::command]
 fn preview(engine: tauri::State<'_, Engine>, target: Target, patch: Fields) -> Result<Vec<Change>> {
@@ -36,8 +47,11 @@ async fn save(app: AppHandle, target: Target, patch: Fields) -> Result<View> {
 }
 
 #[tauri::command]
-fn snapshots(engine: tauri::State<'_, Engine>, tool: Tool) -> Result<Vec<Snapshot>> {
-    engine.snapshots(tool)
+fn snapshots(engine: tauri::State<'_, Engine>, tool: Tool, path: Option<String>) -> Result<Vec<Snapshot>> {
+    match path.as_deref() {
+        Some(path) => engine.snapshots_for(tool, path),
+        None => engine.snapshots(tool),
+    }
 }
 
 #[tauri::command]
@@ -178,10 +192,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            discover, view, preview, save, snapshot, snapshots, compare_snapshot, restore,
+            discover, view, inspect_config, preview, save, snapshot, snapshots, compare_snapshot, restore,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
-            has_key, set_key, remove_key, probe, pick_project_skills,
+            has_key, set_key, remove_key, probe, pick_project_skills, pick_project_config,
         ])
         .run(tauri::generate_context!())
         .expect("WhaleSwitch desktop runtime failed");

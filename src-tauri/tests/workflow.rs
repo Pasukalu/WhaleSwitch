@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, io::{BufRead, BufReader, Write}, net::TcpListener, path::PathBuf, sync::Mutex, thread};
 use tempfile::TempDir;
-use whaleswitch_lib::{Engine, Error, Field, Fields, ProbeInput, Protocol, Result, SecretStore, Tool};
+use whaleswitch_lib::{ConfigObservation, Engine, Error, Field, Fields, ProbeInput, Protocol, Result, SecretStore, Tool};
 use zeroize::Zeroizing;
 
 #[derive(Default)]
@@ -77,6 +77,60 @@ fn guards_the_revision_and_config_scope() {
     let backup = f.engine.snapshot(Tool::Codex, &current.path, &current.revision).unwrap();
     let other = f.engine.view(Tool::Claude).unwrap();
     assert!(matches!(f.engine.restore(Tool::Claude, &other.path, &other.revision, backup.id), Err(Error::SnapshotMismatch)));
+}
+
+#[test]
+fn inspects_external_changes_without_touching_the_configuration_or_vault() {
+    let f = fixture(TestVault::default());
+    let path = &f.files[0];
+    fs::write(path, "model = 'initial'\n").unwrap();
+    let ConfigObservation::View { view: old } = f.engine.inspect_config(Tool::Codex).config else { panic!("missing initial view") };
+    let external = b"model = 'initial'\n# edited outside WhaleSwitch\n";
+    fs::write(path, external).unwrap();
+    let ConfigObservation::View { view: latest } = f.engine.inspect_config(Tool::Codex).config else { panic!("missing edited view") };
+    assert_ne!(latest.revision, old.revision);
+    assert_eq!(latest.fields, old.fields);
+    assert_eq!(fs::read(path).unwrap(), external.as_slice());
+
+    fs::remove_file(path).unwrap();
+    let saved = f.engine.save(Tool::Codex, &latest.path, &latest.revision, &model(Some("draft")));
+    assert!(matches!(saved, Err(Error::Conflict)));
+    let ConfigObservation::View { view: deleted } = f.engine.inspect_config(Tool::Codex).config else { panic!("missing deletion state") };
+    assert!(!deleted.exists);
+    assert_eq!(deleted.revision, "missing");
+    assert!(!path.exists());
+    assert!(f.engine.snapshots_for(Tool::Codex, &deleted.path).unwrap().is_empty());
+
+    fs::write(path, "model = [").unwrap();
+    let ConfigObservation::View { view: malformed } = f.engine.inspect_config(Tool::Codex).config else { panic!("missing malformed state") };
+    assert!(malformed.exists);
+    assert_eq!(malformed.issue, Some(Error::InvalidConfig));
+    assert!(malformed.fields.is_empty());
+    assert!(matches!(f.engine.snapshots_for(Tool::Codex, "/different/config.toml"), Err(Error::Conflict)));
+}
+
+#[test]
+fn saves_a_rebased_patch_and_backs_up_the_externally_edited_bytes() {
+    let f = fixture(TestVault::default());
+    let path = &f.files[0];
+    fs::write(path, "model = 'initial'\n").unwrap();
+    let original = f.engine.view(Tool::Codex).unwrap();
+    let external = b"model = 'initial'\n# user comment\n[other]\nkeep = 'external edit'\n";
+    fs::write(path, external).unwrap();
+    assert!(matches!(
+        f.engine.save(Tool::Codex, &original.path, &original.revision, &model(Some("draft"))),
+        Err(Error::Conflict)
+    ));
+    let current = f.engine.view(Tool::Codex).unwrap();
+    let result = f.engine.preview(Tool::Codex, &current.path, &current.revision, &model(Some("draft"))).unwrap();
+    assert_eq!(result[0].before.as_deref(), Some("initial"));
+    let saved = f.engine.save(Tool::Codex, &current.path, &current.revision, &model(Some("draft"))).unwrap();
+    let updated = fs::read_to_string(path).unwrap();
+    assert!(updated.contains("# user comment"));
+    assert!(updated.contains("keep = 'external edit'"));
+    let snapshot = f.engine.snapshots_for(Tool::Codex, &saved.path).unwrap().remove(0);
+    f.engine.restore(Tool::Codex, &saved.path, &saved.revision, snapshot.id).unwrap();
+    assert_eq!(fs::read(path).unwrap(), external.as_slice());
 }
 
 #[test]
