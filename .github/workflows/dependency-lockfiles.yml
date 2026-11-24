@@ -1,0 +1,30 @@
+name: Generate 1.6 dependency locks
+
+on:
+  push:
+    branches: ['maintenance/v1.6-lockfiles']
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    name: Resolve npm and Cargo dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate lockfiles
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Save lockfiles on the maintenance branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package-lock.json src-tauri/Cargo.lock
+          git commit -m 'Generate WhaleSwitch 1.6.0 dependency locks'
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"

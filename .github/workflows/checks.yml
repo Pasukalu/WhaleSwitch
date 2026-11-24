@@ -2,7 +2,7 @@ name: Test and build desktop
 
 on:
   push:
-    branches: ['**']
+    branches: ['**', '!maintenance/v1.6-lockfiles']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
