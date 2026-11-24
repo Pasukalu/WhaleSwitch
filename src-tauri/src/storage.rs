@@ -6,6 +6,9 @@ use serde::Serialize;
 use std::{fs::{self, File, OpenOptions}, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use zeroize::Zeroizing;
 
+#[cfg(test)]
+mod native_test;
+
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<Zeroizing<String>>>;
     fn set(&self, account: &str, secret: &str) -> Result<()>;

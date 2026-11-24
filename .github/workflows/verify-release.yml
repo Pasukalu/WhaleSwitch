@@ -1,0 +1,190 @@
+name: Retest and attest published desktop packages
+
+on:
+  push:
+    branches: ['verify-release/v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    name: Record published package digests
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.record.outputs.tag }}
+      release-commit: ${{ steps.record.outputs.release-commit }}
+      digests: ${{ steps.record.outputs.digests }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve released source and exact asset digests
+        id: record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME#verify-release/}}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+          [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
+          digests=$(node scripts/verify-published-release.mjs manifest "$tag")
+          printf 'tag=%s\nrelease-commit=%s\ndigests=%s\n' "$tag" "$commit" "$digests" >> "$GITHUB_OUTPUT"
+      - name: Check availability of native signing inputs
+        env:
+          WINDOWS_CERT_CONFIGURED: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+          WINDOWS_CLOUD_CONFIGURED: ${{ (vars.AZURE_SIGNING_ACCOUNT != '' || secrets.AZURE_SIGNING_ACCOUNT != '') && (vars.AZURE_CLIENT_ID != '' || secrets.AZURE_CLIENT_ID != '') }}
+          SIGNPATH_CONFIGURED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+          APPLE_CERT_CONFIGURED: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          APPLE_NOTARY_CONFIGURED: ${{ (secrets.APPLE_API_KEY != '' && secrets.APPLE_API_ISSUER != '' && secrets.APPLE_API_KEY_P8 != '') || (secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') }}
+        run: |
+          printf '%s\n' \
+            "Windows certificate configured: $WINDOWS_CERT_CONFIGURED" \
+            "Windows cloud signing configured: $WINDOWS_CLOUD_CONFIGURED" \
+            "SignPath configured: $SIGNPATH_CONFIGURED" \
+            "Apple certificate configured: $APPLE_CERT_CONFIGURED" \
+            "Apple notarization configured: $APPLE_NOTARY_CONFIGURED"
+
+  native:
+    name: Retest ${{ matrix.target }}
+    needs: manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-15
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: ubuntu-22.04
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 22
+    env:
+      RELEASE_TAG: ${{ needs.manifest.outputs.tag }}
+      TARGET: ${{ matrix.target }}
+      WHALESWITCH_RELEASE_DIGESTS: ${{ needs.manifest.outputs.digests }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - name: Download and verify the released package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/verify-published-release.mjs download "$RELEASE_TAG" "$TARGET" release-assets
+      - name: Install and start the Windows packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          ./scripts/smoke-windows-portable.ps1 -PortableZip "release-assets/WhaleSwitch-$version-windows-x64-portable.zip" -Installer "release-assets/WhaleSwitch-$version-windows-x64.exe"
+      - name: Mount the published DMG and start the app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash scripts/smoke-unix-release.sh "$TARGET" "release-assets/WhaleSwitch-${RELEASE_TAG#v}-$TARGET.dmg"
+      - name: Install and start the published Ubuntu package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          package="$PWD/release-assets/WhaleSwitch-${RELEASE_TAG#v}-$TARGET.deb"
+          sudo apt-get update
+          sudo apt-get install -y "$package" xvfb xauth dbus-x11 gnome-keyring libdbus-1-dev
+          xvfb-run -a bash scripts/smoke-unix-release.sh "$TARGET" "$package"
+      - name: Verify Windows Credential Manager and config restore
+        if: runner.os == 'Windows'
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --lib storage::native_test::native_release_roundtrip -- --ignored --exact
+      - name: Verify Keychain and config restore
+        if: runner.os == 'macOS'
+        run: bash scripts/smoke-native-vault.sh macos
+      - name: Verify Secret Service and config restore
+        if: runner.os == 'Linux'
+        run: bash scripts/smoke-native-vault.sh linux
+
+  attest:
+    name: Sign the retest statement with Sigstore
+    needs: [manifest, native]
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      artifact-metadata: write
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.manifest.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.manifest.outputs.release-commit }}
+      WHALESWITCH_RELEASE_DIGESTS: ${{ needs.manifest.outputs.digests }}
+      PREDICATE_TYPE: https://github.com/Pasukalu/WhaleSwitch/attestations/native-release-retest/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify the tested package digests again
+        run: node scripts/verify-published-release.mjs download "$RELEASE_TAG" all release-assets
+      - name: Describe the native test coverage
+        run: |
+          jq -n --arg tag "$RELEASE_TAG" --arg commit "$RELEASE_COMMIT" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg source "$GITHUB_SHA" '{
+              releaseTag: $tag,
+              releaseCommit: $commit,
+              verificationRun: $run,
+              verificationCommit: $source,
+              checks: {
+                windows: ["NSIS installation", "installed and portable WebView2 launch", "Credential Manager"],
+                macos: ["Apple Silicon and Intel DMG application launch", "Keychain"],
+                linux: ["Debian package installation", "Xvfb application launch", "Secret Service"],
+                all: ["release asset digest", "scoped credential lifecycle", "encrypted backup and byte-exact restore of all three CLI fixtures"]
+              }
+            }' > retest.json
+      - name: Sign the native retest statement
+        id: sigstore
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.exe
+            release-assets/*.zip
+            release-assets/*.dmg
+            release-assets/*.deb
+          predicate-type: ${{ env.PREDICATE_TYPE }}
+          predicate-path: retest.json
+      - name: Verify the signature and publish the detached bundle
+        env:
+          BUNDLE_PATH: ${{ steps.sigstore.outputs.bundle-path }}
+        run: |
+          for package in release-assets/*.exe release-assets/*.zip release-assets/*.dmg release-assets/*.deb; do
+            gh attestation verify "$package" --bundle "$BUNDLE_PATH" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/verify-release.yml" \
+              --predicate-type "$PREDICATE_TYPE" --deny-self-hosted-runners
+          done
+          name="WhaleSwitch-${RELEASE_TAG#v}-verification.sigstore.json"
+          existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets | jq --arg name "$name" '[.assets[] | select(.name == $name)] | length')
+          if [[ "$existing" == 0 ]]; then
+            cp "$BUNDLE_PATH" "$name"
+            gh release upload "$RELEASE_TAG" "$name" --repo "$GITHUB_REPOSITORY"
+          fi
