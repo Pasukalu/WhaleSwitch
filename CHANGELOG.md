@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0
+
+- Save a project-specific skill manifest baseline, rescan the selected project, and review additions, modifications, and removals across the three supported CLI locations.
+- Filter the inventory and change list by path. Incomplete scans show confirmed changes and defer removal detection.
+- Preview the path and source text of each file before importing a local skill. Imports copy `SKILL.md` and supported Markdown or text references.
+- Recheck the source and project destination before writing. Same-name destinations stop the operation. Failed imports roll back verified files created by that run and preserve external edits.
+
 ## 1.6.0
 
 - Combine up to three tool profiles into a named configuration plan. Import and export plans as JSON independently of their original profiles.

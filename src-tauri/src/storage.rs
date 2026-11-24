@@ -98,6 +98,9 @@ impl Storage {
             CREATE TABLE IF NOT EXISTS plan_runs (
               id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, timestamp INTEGER NOT NULL,
               finished INTEGER NOT NULL, entries TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS skill_baselines (
+              project TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, fingerprints TEXT NOT NULL
             );")
             .map_err(|_| Error::BackupFailed)?;
         Ok(db)

@@ -42,6 +42,15 @@ export type PlanFileResult = { tool: Tool; snapshot_id: number | null; status: P
 export type PlanRun = { id: number; name: string; timestamp: number; finished: boolean; files: PlanFileResult[] };
 export type SkillEntry = { name: string; path: string; tools: Tool[]; fingerprint: string; same_name: boolean };
 export type SkillInventory = { root: string; entries: SkillEntry[]; skipped: number; limited: boolean };
+export type SkillLocation = "agents" | "claude" | "opencode";
+export type SkillChangeKind = "added" | "modified" | "removed";
+export type SkillChange = { path: string; kind: SkillChangeKind; before: string | null; after: string | null };
+export type ProjectSkillsReport = { inventory: SkillInventory; revision: string; baseline_at: number | null; changes: SkillChange[] };
+export type SkillImportFile = { path: string; fingerprint: string; bytes: number; text: string };
+export type SkillImportPreview = {
+  source: string; destination: string; name: string; revision: string; existing: boolean; skipped: number;
+  excluded: string[]; files: SkillImportFile[];
+};
 export type ProbeInput = { tool: Tool; protocol: Protocol; endpoint: string; anonymous?: boolean };
 export type ProbeResult = {
   elapsed_ms: number; status: number | null; models: number | null;

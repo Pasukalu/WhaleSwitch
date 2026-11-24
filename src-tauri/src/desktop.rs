@@ -1,11 +1,13 @@
 use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
-use crate::{scan_project_config, scan_project_skills, ConfigInspection, ProjectConfigReport, SkillInventory};
+use crate::{scan_project_config, ConfigInspection, ProjectConfigReport};
 use crate::{ConfigPlan, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
+
+mod project_skills;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,11 +24,6 @@ fn runtime_info(info: tauri::State<'_, RuntimeInfo>) -> RuntimeInfo { info.inner
 
 #[tauri::command]
 fn discover(engine: tauri::State<'_, Engine>) -> Vec<ToolInfo> { engine.discover() }
-
-#[tauri::command]
-async fn pick_project_skills(app: AppHandle) -> Result<SkillInventory> {
-    blocking(move || scan_project_skills(&pick_project_folder(&app)?)).await
-}
 
 #[tauri::command]
 async fn pick_project_config(app: AppHandle) -> Result<ProjectConfigReport> {
@@ -258,6 +255,7 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + '
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(project_skills::SkillWorkspace::default())
         .setup(|app| {
             let config = &app.config().app.windows[0];
             let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
@@ -283,7 +281,10 @@ pub fn run() {
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
             plans, create_plan, delete_plan, read_plan_archive, import_plan, export_plan, preview_plan, apply_plan, plan_runs,
-            has_key, set_key, remove_key, probe, pick_project_skills, pick_project_config,
+            has_key, set_key, remove_key, probe, pick_project_config,
+            project_skills::pick_project_skills, project_skills::refresh_project_skills,
+            project_skills::capture_skill_baseline, project_skills::pick_skill_import,
+            project_skills::preview_skill_import, project_skills::apply_skill_import,
         ])
         .run(tauri::generate_context!())
         .expect("WhaleSwitch desktop runtime failed");

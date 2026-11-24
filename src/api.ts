@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
-import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, RuntimeInfo, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, ProjectSkillsReport, RuntimeInfo, SkillImportPreview, SkillLocation, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
@@ -15,7 +15,12 @@ function request<T>(command: string, args?: Record<string, unknown>): Promise<T>
 export const api = {
   discover: () => request<ToolInfo[]>("discover"),
   runtimeInfo: () => request<RuntimeInfo>("runtime_info"),
-  pickProjectSkills: () => request<SkillInventory>("pick_project_skills"),
+  pickProjectSkills: () => request<ProjectSkillsReport>("pick_project_skills"),
+  refreshProjectSkills: (root: string) => request<ProjectSkillsReport>("refresh_project_skills", { root }),
+  captureSkillBaseline: (root: string, revision: string) => request<ProjectSkillsReport>("capture_skill_baseline", { root, revision }),
+  pickSkillImport: (root: string, location: SkillLocation) => request<SkillImportPreview>("pick_skill_import", { root, location }),
+  previewSkillImport: (root: string, location: SkillLocation) => request<SkillImportPreview>("preview_skill_import", { root, location }),
+  applySkillImport: (root: string, location: SkillLocation, revision: string) => request<void>("apply_skill_import", { root, location, revision }),
   pickProjectConfig: () => request<ProjectConfigReport>("pick_project_config"),
   inspectConfig: (tool: Tool) => request<ConfigInspection>("inspect_config", { tool }),
   view: (tool: Tool) => request<View>("view", { tool }),

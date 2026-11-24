@@ -7,6 +7,10 @@ use zeroize::Zeroizing;
 use crate::{Profile, ProfileArchive, ProfilePreview};
 
 mod plan_apply;
+mod project_skills;
+mod skill_import;
+
+pub use skill_import::{SkillImportFile, SkillImportPreview};
 
 pub const MAX_CONFIG: u64 = 2 * 1024 * 1024;
 pub const MAX_ARCHIVE: u64 = 64 * 1024;

@@ -1,15 +1,34 @@
 use crate::engine::{directory_exists, fingerprint_text_file, unsafe_meta};
 use crate::{Error, Result, Tool};
-use serde::Serialize;
-use std::{fs, io, path::Path};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, fs, io, path::Path};
 
 const MAX_ENTRIES_PER_SOURCE: usize = 256;
-const MAX_MANIFEST_BYTES: u64 = 128 * 1024;
-const LOCATIONS: [(&str, &[Tool]); 3] = [
-    (".agents/skills", &[Tool::Codex, Tool::Opencode]),
-    (".claude/skills", &[Tool::Claude, Tool::Opencode]),
-    (".opencode/skills", &[Tool::Opencode]),
-];
+pub(crate) const MAX_MANIFEST_BYTES: u64 = 128 * 1024;
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillLocation { Agents, Claude, Opencode }
+
+impl SkillLocation {
+    const ALL: [Self; 3] = [Self::Agents, Self::Claude, Self::Opencode];
+
+    pub(crate) fn directory(self) -> &'static str {
+        match self {
+            Self::Agents => ".agents/skills",
+            Self::Claude => ".claude/skills",
+            Self::Opencode => ".opencode/skills",
+        }
+    }
+
+    fn tools(self) -> &'static [Tool] {
+        match self {
+            Self::Agents => &[Tool::Codex, Tool::Opencode],
+            Self::Claude => &[Tool::Claude, Tool::Opencode],
+            Self::Opencode => &[Tool::Opencode],
+        }
+    }
+}
 
 #[derive(Serialize)]
 pub struct SkillEntry {
@@ -28,6 +47,55 @@ pub struct SkillInventory {
     pub limited: bool,
 }
 
+impl SkillInventory {
+    pub(crate) fn complete(&self) -> bool { !self.limited && self.skipped == 0 }
+
+    pub(crate) fn fingerprints(&self) -> BTreeMap<String, String> {
+        self.entries.iter().map(|entry| (entry.path.clone(), entry.fingerprint.clone())).collect()
+    }
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillChangeKind { Added, Modified, Removed }
+
+#[derive(Serialize)]
+pub struct SkillChange {
+    pub path: String,
+    pub kind: SkillChangeKind,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ProjectSkills {
+    pub inventory: SkillInventory,
+    pub revision: String,
+    pub baseline_at: Option<u64>,
+    pub changes: Vec<SkillChange>,
+}
+
+pub(crate) type SkillFingerprints = BTreeMap<String, String>;
+
+pub(crate) fn project_changes(before: &SkillFingerprints, after: &SkillFingerprints, complete: bool) -> Vec<SkillChange> {
+    let mut changes: Vec<_> = after.iter().filter_map(|(path, fingerprint)| {
+        let previous = before.get(path);
+        (previous != Some(fingerprint)).then(|| SkillChange {
+            path: path.clone(),
+            kind: if previous.is_some() { SkillChangeKind::Modified } else { SkillChangeKind::Added },
+            before: previous.cloned(),
+            after: Some(fingerprint.clone()),
+        })
+    }).collect();
+    if complete {
+        changes.extend(before.iter().filter(|(path, _)| !after.contains_key(*path)).map(|(path, fingerprint)| {
+            SkillChange { path: path.clone(), kind: SkillChangeKind::Removed, before: Some(fingerprint.clone()), after: None }
+        }));
+    }
+    changes.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+    changes
+}
+
 /// Inspects the documented project-root directories for folder-based skill manifests.
 pub fn scan_project_skills(root: &Path) -> Result<SkillInventory> {
     if !directory_exists(root)? {
@@ -40,7 +108,8 @@ pub fn scan_project_skills(root: &Path) -> Result<SkillInventory> {
         limited: false,
     };
 
-    for (location, tools) in LOCATIONS {
+    for source in SkillLocation::ALL {
+        let location = source.directory();
         let directory = root.join(location);
         let children = match directory_exists(&directory) {
             Ok(false) => continue,
@@ -48,19 +117,21 @@ pub fn scan_project_skills(root: &Path) -> Result<SkillInventory> {
             Err(error) => Err(error),
         };
         match children {
-            Ok(children) => scan_location(children, location, tools, &mut inventory),
+            Ok(children) => scan_location(children, location, source.tools(), &mut inventory),
             Err(_) => inventory.skipped += 1,
         }
     }
 
     inventory.entries.sort_unstable_by(|left, right| left.path.cmp(&right.path));
-    for index in 0..inventory.entries.len() {
-        let entry = &inventory.entries[index];
-        let same_name = inventory.entries.iter().enumerate().any(|(other_index, other)| {
-            index != other_index && entry.name.eq_ignore_ascii_case(&other.name)
-                && entry.tools.iter().any(|tool| other.tools.contains(tool))
-        });
-        inventory.entries[index].same_name = same_name;
+    let mut matches = BTreeMap::new();
+    for entry in &inventory.entries {
+        for tool in entry.tools {
+            *matches.entry((entry.name.to_ascii_lowercase(), tool.id())).or_insert(0usize) += 1;
+        }
+    }
+    for entry in &mut inventory.entries {
+        let key = entry.name.to_ascii_lowercase();
+        entry.same_name = entry.tools.iter().any(|tool| matches[&(key.clone(), tool.id())] > 1);
     }
     Ok(inventory)
 }

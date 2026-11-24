@@ -429,7 +429,7 @@ export function App() {
 
     <main className="workspace">
       <header className="topbar">
-        <div className="breadcrumbs"><Boxes size={15}/><span>{t.workspace}</span><ChevronRight size={14}/><strong>{tab === "settings" || tab === "plans" ? t[tab] : TOOL_NAMES[tool]}</strong></div>
+        <div className="breadcrumbs"><Boxes size={15}/><span>{t.workspace}</span><ChevronRight size={14}/><strong>{tab === "settings" || tab === "plans" || tab === "skills" ? t[tab] : TOOL_NAMES[tool]}</strong></div>
         <div className="top-actions">
           <Button variant="ghost" size="icon" aria-label={t.language} title={t.language} onClick={() => setLanguage(language === "zh" ? "en" : "zh")}><Languages/></Button>
           <Button variant="ghost" size="icon" aria-label={t.appearance} title={t.appearance} onClick={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>{theme === "light" ? <Sun/> : <Moon/>}</Button>
@@ -464,8 +464,10 @@ export function App() {
         </div> : <>
           <section className="hero" aria-labelledby="workspace-title">
             <div className="hero-grid"/>
-            <div className="hero-text"><div className="hero-status"><span className={`dot ${view?.exists && !view.issue && !drift ? "live" : ""}`}/>{loading ? t.loading : drift ? t.driftTitle : baselineIssue ? t.unavailable : view?.exists ? t.ready : t.noFile}</div>
-              <h1 id="workspace-title">{tab === "plans" ? t.plans : TOOL_NAMES[tool]}</h1><p>{tab === "plans" ? t.plansIntro : t.intro}</p>
+            <div className="hero-text">{tab !== "skills" && tab !== "plans" &&
+              <div className="hero-status"><span className={`dot ${view?.exists && !view.issue && !drift ? "live" : ""}`}/>{loading ? t.loading : drift ? t.driftTitle : baselineIssue ? t.unavailable : view?.exists ? t.ready : t.noFile}</div>}
+              <h1 id="workspace-title">{tab === "plans" || tab === "skills" ? t[tab] : TOOL_NAMES[tool]}</h1>
+              <p>{tab === "plans" ? t.plansIntro : tab === "skills" ? t.skillsIntro : t.intro}</p>
             </div>
             <div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="art-glow"/>
               <img src="/whale.png" alt={t.mascot} draggable={false} onError={(event) => { event.currentTarget.hidden = true; }}/>
