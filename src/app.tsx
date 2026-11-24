@@ -10,7 +10,7 @@ import { DiffDialog } from "./components/diff-dialog";
 import { Profiles, type ProfileEdit } from "./components/profiles";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, fieldPatch, fieldPath, targetOf, type Change, type Field, type Fields, type Profile, type ProfileArchive, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
+import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultProfileSelection, fieldPatch, fieldPath, profileSelectionPatch, targetOf, type Change, type Field, type Fields, type Profile, type ProfileArchive, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
@@ -18,7 +18,7 @@ type Tab = "config" | "profiles" | "snapshots" | "connectivity" | "settings";
 type Theme = "dark" | "light" | "system";
 type Review = { kind: "save"; changes: Change[]; patch: Fields }
   | { kind: "restore" | "compare"; changes: Change[]; id: number }
-  | { kind: "profile"; changes: Change[]; id: number; name: string };
+  | { kind: "profile"; changes: Change[]; id: number; name: string; selected: Field[] };
 type Notice = { message: string; error: boolean };
 
 const TOOL_ICON = { codex: Terminal, claude: Cloud, opencode: CodeXml };
@@ -181,9 +181,11 @@ export function App() {
 
   async function confirm() {
     if (!view || !review || review.kind === "compare") return;
+    if (review.kind === "profile" && !review.selected.length) return;
     const target = targetOf(view);
     const next = review.kind === "save" ? await api.save(target, review.patch)
-      : review.kind === "profile" ? await api.applyProfile(target, review.id) : await api.restore(target, review.id);
+      : review.kind === "profile" ? await api.applyProfile(target, review.id, profileSelectionPatch(review.changes, review.selected))
+      : await api.restore(target, review.id);
     applyView(next);
     success(review.kind === "save" ? t.saved : review.kind === "profile" ? t.profileApplied : t.restored);
     await refreshHistory();
@@ -208,7 +210,7 @@ export function App() {
   async function previewProfile(profile: Profile) {
     if (!view || view.issue || (dirty && !window.confirm(t.discard))) return;
     const result = await api.previewProfile(targetOf(view), profile.id);
-    setReview({ kind: "profile", id: profile.id, ...result });
+    setReview({ kind: "profile", id: profile.id, ...result, selected: defaultProfileSelection(result.changes) });
   }
 
   function editProfile(kind: ProfileEdit, profile: Profile, name: string) {
@@ -406,9 +408,14 @@ export function App() {
 
       {review && <DiffDialog t={t} changes={review.changes} busy={busy} error={notice?.error ? notice.message : undefined} onClose={() => setReview(null)}
         title={review.kind === "save" ? t.review : review.kind === "profile" ? review.name : `${t.ref} #${review.id}`}
-        hint={review.kind === "save" || review.kind === "profile" ? t.saveHint : review.kind === "restore" ? t.restoreHint : undefined}
+        hint={review.kind === "profile" ? t.profileSelectionHint : review.kind === "save" ? t.saveHint
+          : review.kind === "restore" ? t.restoreHint : undefined}
+        selection={review.kind === "profile" ? {
+          fields: review.selected,
+          onChange: (selected) => setReview((current) => current?.kind === "profile" ? { ...current, selected } : current),
+        } : undefined}
         action={review.kind !== "compare" && (review.kind === "restore" || review.changes.length > 0)
-          ? <Button disabled={busy} onClick={() => void run(confirm)}>{review.kind === "restore" ? t.confirmRestore : review.kind === "profile" ? t.profileApply : view?.exists ? t.saving : t.create}</Button>
+          ? <Button disabled={busy || (review.kind === "profile" && !review.selected.length)} onClick={() => void run(confirm)}>{review.kind === "restore" ? t.confirmRestore : review.kind === "profile" ? t.profileApplySelected : view?.exists ? t.saving : t.create}</Button>
           : undefined}/>}
     </main>
   </div>;

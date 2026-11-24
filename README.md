@@ -38,7 +38,7 @@ The field list follows the [Codex configuration reference](https://learn.chatgpt
 | Save profile | Stores validated fields for the selected tool in SQLite, including defaults captured as unset. |
 | Rename or duplicate | Rename keeps the same profile and captured values. Duplicate creates a separate profile from its saved fields. Both actions update the saved profile list. |
 | Export or import a profile | Moves a saved profile as JSON for the same tool. Explicitly unset fields are preserved. Choose a name before saving the imported profile. |
-| Apply profile | Starts with a read-only field diff, then uses the normal revision-checked write and backup flow. |
+| Apply profile | Choose changes in the field diff and write the selected values through the revision-checked backup flow. Removals start unchecked. |
 | Restore snapshot | Restores the full original bytes at the same tool and path. An existing file is backed up first. |
 | Export or import active settings | Exports allowlisted configured values as JSON. Import stages an overlay for review. |
 
@@ -50,9 +50,11 @@ The field list follows the [Codex configuration reference](https://learn.chatgpt
 
 1. Open **Profiles** and export the saved profile from its row.
 2. On the other device, select the same CLI, then choose **Import profile** in **Profiles**.
-3. Review the name and save the import. If the name is already taken, choose another. Use **Review changes** on the imported profile when you are ready to apply it.
+3. Review the name and save the import. If the name is already taken, choose another. Use **Review changes** on the imported profile, select the fields to write, then choose **Apply selected fields**.
 
 档案 JSON 只包含工具类型、档案名称和支持的配置字段。显式清除的字段也会迁移。API 密钥、原始配置文件和加密快照由本机独立存储。
+
+例如，从另一台设备导入 Codex 档案后，可以只勾选模型和推理强度，保留本机的 API 地址。确实需要清除一项配置时，再勾选带有「清除该字段」标记的差异。
 
 ## Connection tests
 
@@ -78,4 +80,6 @@ GitHub Actions runs frontend and Rust tests and packages each target. Installers
 
 ## Project references and license
 
-[CC Switch](https://github.com/farion1231/cc-switch) informed the reusable profile and preview-before-write workflow. [CodexBar](https://github.com/steipete/CodexBar) informed the per-tool diagnostics presentation. WhaleSwitch's code and whale navigator artwork are independent. [MIT License](LICENSE).
+- CC Switch's live writer delegates provider-specific updates to tool-specific patch paths. [CC Switch live configuration code](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/services/provider/live.rs)
+- CCS stores account-profile metadata in its registry and dispatches Claude through a platform-aware CLI adapter. [CCS profile registry](https://github.com/kaitranntt/ccs/blob/main/src/auth/profile-registry.ts) · [CCS Claude adapter](https://github.com/kaitranntt/ccs/blob/main/src/targets/claude-adapter.ts)
+- WhaleSwitch focuses on reusing settings across devices with field selection before writing and a local recovery snapshot. [MIT License](LICENSE)

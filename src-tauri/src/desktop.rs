@@ -46,8 +46,14 @@ async fn preview_profile(app: AppHandle, target: Target, id: i64) -> Result<Prof
 }
 
 #[tauri::command]
-async fn apply_profile(app: AppHandle, target: Target, id: i64) -> Result<View> {
-    blocking(move || app.state::<Engine>().apply_profile(target.tool, &target.path, &target.revision, id)).await
+async fn apply_profile(app: AppHandle, target: Target, id: i64, selection: Option<Fields>) -> Result<View> {
+    blocking(move || {
+        let engine = app.state::<Engine>();
+        match selection {
+            Some(fields) => engine.apply_profile_selection(target.tool, &target.path, &target.revision, id, &fields),
+            None => engine.apply_profile(target.tool, &target.path, &target.revision, id),
+        }
+    }).await
 }
 
 #[tauri::command]

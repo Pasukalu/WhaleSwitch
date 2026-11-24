@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Select the individual fields to apply from a saved profile.
+- Keep configuration removals unchecked by default. Select a removal explicitly to clear that setting.
+- Check the chosen values against the saved profile and verify the live file revision before applying them.
+
 ## 1.1.0
 
 - Export and import a named profile as JSON, preserving explicit unset values.

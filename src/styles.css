@@ -186,6 +186,10 @@ h1, h2, h3, p { margin: 0; }
 .dialog-empty { padding: 8px 16px 15px; }
 .diff-list { display: grid; gap: 7px; padding: 0 16px 14px; }
 .diff-row { display: grid; gap: 6px; font-size: 11px; }
+.diff-selection { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 16px 8px; color: var(--muted); font-size: 12px; }
+.diff-field-choice { display: flex; align-items: center; gap: 8px; font-weight: 650; cursor: pointer; }
+.diff-field-choice input { accent-color: var(--ice); }
+.diff-field-choice .before { color: var(--danger); }
 .diff-values { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 6px; align-items: center; }
 .diff-values code { padding: 6px; background: var(--raised); border-radius: 5px; overflow-wrap: anywhere; }
 .diff-values .before { color: var(--danger); }

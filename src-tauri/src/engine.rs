@@ -184,6 +184,16 @@ impl Engine {
         self.save(tool, target, revision, &profile.fields)
     }
 
+    pub fn apply_profile_selection(&self, tool: Tool, target: &str, revision: &str, id: i64, selection: &Fields) -> Result<View> {
+        if selection.is_empty() { return Err(Error::InvalidField); }
+        tool.validate(selection)?;
+        let profile = self.storage.profile(tool, id)?;
+        if selection.iter().any(|(field, value)| profile.fields.get(field) != Some(value)) {
+            return Err(Error::Conflict);
+        }
+        self.save(tool, target, revision, selection)
+    }
+
     pub fn delete_profile(&self, tool: Tool, id: i64) -> Result<()> {
         let _lock = self.storage.lock()?;
         self.storage.delete_profile(tool, id)

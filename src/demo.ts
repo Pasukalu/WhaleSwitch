@@ -79,10 +79,17 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       if (!profile) throw "profile_missing";
       result = { name: profile.name, changes: changes(view.fields, profile.fields) };
       break;
-    case "apply_profile":
+    case "apply_profile": {
       if (!profile) throw "profile_missing";
-      result = save(view, profile.fields);
+      const selection = args.selection as Fields | undefined;
+      if (selection) {
+        const fields = Object.keys(selection) as (keyof Fields)[];
+        if (!fields.length) throw "invalid_field";
+        if (fields.some((field) => !(field in profile.fields) || profile.fields[field] !== selection[field])) throw "conflict";
+      }
+      result = save(view, selection ?? profile.fields);
       break;
+    }
     case "delete_profile":
       if (!profile) throw "profile_missing";
       profiles[tool] = profiles[tool].filter(({ id }) => id !== profile.id);

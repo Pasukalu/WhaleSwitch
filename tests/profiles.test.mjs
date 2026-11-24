@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { demo } from "../src/demo.ts";
-import { fieldPatch, fieldPath, initialProbe, targetOf } from "../src/domain.ts";
+import { defaultProfileSelection, fieldPatch, fieldPath, initialProbe, profileSelectionPatch, targetOf } from "../src/domain.ts";
 
 test("profiles capture a draft, preview changes, and back up before applying", async () => {
   const view = await demo("view", { tool: "claude" });
@@ -47,4 +47,21 @@ test("renaming and duplicating profiles preserves captured fields and leaves liv
   assert.deepEqual(renamed, { ...original, name: "Daily work" });
   assert.deepEqual(await demo("view", { tool }), view);
   assert.deepEqual(await demo("snapshots", { tool }), []);
+});
+
+test("profile review defaults to keeping fields marked for removal and writes only the selected values", async () => {
+  const tool = "claude";
+  const initial = await demo("view", { tool });
+  const current = await demo("save", { target: targetOf(initial), patch: { anthropic_base_url: "https://current.example" } });
+  const target = targetOf(current);
+  const profile = await demo("create_profile", { target, name: "Foreign device", patch: { model: "remote-model", anthropic_base_url: null } });
+  const { changes } = await demo("preview_profile", { target, id: profile.id });
+  const selection = profileSelectionPatch(changes, defaultProfileSelection(changes));
+  assert.deepEqual(selection, { model: "remote-model" });
+  assert.deepEqual(profileSelectionPatch(changes, ["anthropic_base_url"]), { anthropic_base_url: null });
+  assert.deepEqual(profileSelectionPatch(changes, ["default_agent"]), {});
+  await assert.rejects(() => demo("apply_profile", { target, id: profile.id, selection: { model: "other" } }), (error) => error === "conflict");
+  const applied = await demo("apply_profile", { target, id: profile.id, selection });
+  assert.equal(applied.fields.model, "remote-model");
+  assert.equal(applied.fields.anthropic_base_url, "https://current.example");
 });

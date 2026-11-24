@@ -251,6 +251,36 @@ fn portable_profiles_keep_explicit_defaults_and_do_not_apply_on_import() {
 }
 
 #[test]
+fn selected_profile_changes_keep_the_live_endpoint_and_back_up_each_confirmed_write() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Codex;
+    let original = "model = 'live'\nopenai_base_url = 'https://current.example/v1'\n# user comment\n";
+    fs::write(&f.files[0], original).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let patch: Fields = [(Field::Model, Some("portable".into())), (Field::OpenaiBaseUrl, None)].into_iter().collect();
+    let profile = f.engine.create_profile(tool, &view.path, &view.revision, "Travel", &patch).unwrap();
+    let tampered: Fields = [(Field::Model, Some("unreviewed".into()))].into_iter().collect();
+    let apply = |fields: &Fields| f.engine.apply_profile_selection(tool, &view.path, &view.revision, profile.id, fields);
+    assert!(matches!(apply(&Fields::new()), Err(Error::InvalidField)));
+    assert!(matches!(apply(&tampered), Err(Error::Conflict)));
+    assert!(f.engine.snapshots(tool).unwrap().is_empty());
+
+    let selected: Fields = [(Field::Model, Some("portable".into()))].into_iter().collect();
+    let updated = apply(&selected).unwrap();
+    assert_eq!(updated.fields[&Field::Model].as_deref(), Some("portable"));
+    assert_eq!(updated.fields[&Field::OpenaiBaseUrl].as_deref(), Some("https://current.example/v1"));
+    assert!(fs::read_to_string(&f.files[0]).unwrap().contains("# user comment"));
+    assert_eq!(f.engine.snapshots(tool).unwrap().len(), 1);
+
+    let clear: Fields = [(Field::OpenaiBaseUrl, None)].into_iter().collect();
+    assert!(matches!(apply(&clear), Err(Error::Conflict)));
+    let cleared = f.engine.apply_profile_selection(tool, &updated.path, &updated.revision, profile.id, &clear).unwrap();
+    assert_eq!(cleared.fields[&Field::OpenaiBaseUrl], None);
+    assert_eq!(cleared.fields[&Field::Model].as_deref(), Some("portable"));
+    assert_eq!(f.engine.snapshots(tool).unwrap().len(), 2);
+}
+
+#[test]
 fn profile_import_rejects_invalid_or_unsupported_archive_content() {
     let f = fixture(ClosedVault);
     let destination = f.dir.path().canonicalize().unwrap().join("untrusted.profile.json");

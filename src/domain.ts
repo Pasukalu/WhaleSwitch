@@ -50,6 +50,19 @@ export function fieldPatch(current: Fields, draft: Fields): Fields {
   return patch;
 }
 
+export function defaultProfileSelection(changes: readonly Change[]): Field[] {
+  return changes.filter(({ after }) => after !== null).map(({ field }) => field);
+}
+
+export function profileSelectionPatch(changes: readonly Change[], selected: readonly Field[]): Fields {
+  const patch: Fields = {};
+  const fields = new Set(selected);
+  for (const { field, after } of changes) {
+    if (fields.has(field)) patch[field] = after;
+  }
+  return patch;
+}
+
 export function initialProbe(view: View | null, tool: Tool): ProbeInput {
   const model = view?.fields.model;
   const protocol = tool === "claude" || (tool === "opencode" && model?.startsWith("anthropic/"))
