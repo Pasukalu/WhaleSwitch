@@ -1,6 +1,6 @@
 use crate::{storage::Storage, Change, Error, Fields, Result, Tool};
 use rusqlite::{params, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize)]
@@ -15,6 +15,24 @@ pub struct Profile {
 pub struct ProfilePreview {
     pub name: String,
     pub changes: Vec<Change>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileArchive {
+    pub version: u16,
+    pub tool: Tool,
+    pub name: String,
+    pub fields: Fields,
+}
+
+impl ProfileArchive {
+    pub(crate) fn validate(&self, tool: Tool) -> Result<()> {
+        if self.version != 1 { return Err(Error::InvalidArchive); }
+        if self.tool != tool { return Err(Error::WrongTool); }
+        validate_name(&self.name).map_err(|_| Error::InvalidArchive)?;
+        tool.validate(&self.fields).map_err(|_| Error::InvalidArchive)
+    }
 }
 
 impl Storage {

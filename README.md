@@ -37,13 +37,22 @@ The field list follows the [Codex configuration reference](https://learn.chatgpt
 | --- | --- |
 | Save profile | Stores validated fields for the selected tool in SQLite, including defaults captured as unset. |
 | Rename or duplicate | Rename keeps the same profile and captured values. Duplicate creates a separate profile from its saved fields. Both actions update the saved profile list. |
+| Export or import a profile | Moves a saved profile as JSON for the same tool. Explicitly unset fields are preserved. Choose a name before saving the imported profile. |
 | Apply profile | Starts with a read-only field diff, then uses the normal revision-checked write and backup flow. |
 | Restore snapshot | Restores the full original bytes at the same tool and path. An existing file is backed up first. |
-| Export or import | Exports portable, allowlisted fields as JSON. Import stages an overlay for review. |
+| Export or import active settings | Exports allowlisted configured values as JSON. Import stages an overlay for review. |
 
 档案只包含支持字段，工具的原生登录仍由对应 CLI 管理。快照保存完整原文，因此使用系统密钥库中的专用密钥加密。密钥库不可用时，应用会拒绝覆盖已有配置。读取、保存与还原流程详见 [架构与安全](docs/ARCHITECTURE.md)。
 
 在 **配置档案** 中，可以重命名档案，或将已保存的字段复制到新档案。操作只影响档案列表，明确应用并确认差异后才会写入工具配置。
+
+### Move a profile between devices
+
+1. Open **Profiles** and export the saved profile from its row.
+2. On the other device, select the same CLI, then choose **Import profile** in **Profiles**.
+3. Review the name and save the import. If the name is already taken, choose another. Use **Review changes** on the imported profile when you are ready to apply it.
+
+档案 JSON 只包含工具类型、档案名称和支持的配置字段。显式清除的字段也会迁移。API 密钥、原始配置文件和加密快照由本机独立存储。
 
 ## Connection tests
 

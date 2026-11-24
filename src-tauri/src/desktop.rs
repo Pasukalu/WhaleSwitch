@@ -1,5 +1,6 @@
-use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
+use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
 use serde::Deserialize;
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
@@ -82,9 +83,8 @@ async fn restore(app: AppHandle, target: Target, id: i64) -> Result<View> {
 #[tauri::command]
 async fn import_archive(app: AppHandle, tool: Tool) -> Result<Fields> {
     blocking(move || {
-        let selected = app.dialog().file().add_filter("WhaleSwitch JSON", &["json"])
-            .blocking_pick_file().ok_or(Error::Cancelled)?;
-        app.state::<Engine>().import_archive(tool, &selected.into_path().map_err(|_| Error::UnsafePath)?)
+        let path = pick_archive(&app, "WhaleSwitch Configuration JSON")?;
+        app.state::<Engine>().import_archive(tool, &path)
     }).await
 }
 
@@ -92,10 +92,41 @@ async fn import_archive(app: AppHandle, tool: Tool) -> Result<Fields> {
 async fn export_archive(app: AppHandle, target: Target) -> Result<()> {
     blocking(move || {
         let name = format!("whaleswitch-{}.json", target.tool.id());
-        let selected = app.dialog().file().set_file_name(name).add_filter("WhaleSwitch JSON", &["json"])
-            .blocking_save_file().ok_or(Error::Cancelled)?;
-        app.state::<Engine>().export_archive(target.tool, &target.path, &target.revision, &selected.into_path().map_err(|_| Error::UnsafePath)?)
+        let path = save_archive_as(&app, name, "WhaleSwitch Configuration JSON")?;
+        app.state::<Engine>().export_archive(target.tool, &target.path, &target.revision, &path)
     }).await
+}
+
+#[tauri::command]
+async fn read_profile_archive(app: AppHandle, tool: Tool) -> Result<ProfileArchive> {
+    blocking(move || {
+        let path = pick_archive(&app, "WhaleSwitch Profile JSON")?;
+        app.state::<Engine>().read_profile_archive(tool, &path)
+    }).await
+}
+
+#[tauri::command]
+async fn import_profile(app: AppHandle, tool: Tool, archive: ProfileArchive, name: String) -> Result<Profile> {
+    blocking(move || app.state::<Engine>().import_profile(tool, archive, &name)).await
+}
+
+#[tauri::command]
+async fn export_profile_archive(app: AppHandle, tool: Tool, id: i64) -> Result<()> {
+    blocking(move || {
+        let name = format!("whaleswitch-{}-profile.json", tool.id());
+        let path = save_archive_as(&app, name, "WhaleSwitch Profile JSON")?;
+        app.state::<Engine>().export_profile_archive(tool, id, &path)
+    }).await
+}
+
+fn pick_archive(app: &AppHandle, label: &str) -> Result<PathBuf> {
+    app.dialog().file().add_filter(label, &["json"]).blocking_pick_file().ok_or(Error::Cancelled)?
+        .into_path().map_err(|_| Error::UnsafePath)
+}
+
+fn save_archive_as(app: &AppHandle, name: String, label: &str) -> Result<PathBuf> {
+    app.dialog().file().set_file_name(name).add_filter(label, &["json"]).blocking_save_file().ok_or(Error::Cancelled)?
+        .into_path().map_err(|_| Error::UnsafePath)
 }
 
 #[tauri::command]
@@ -133,7 +164,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             discover, view, preview, save, snapshot, snapshots, compare_snapshot, restore,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
-            import_archive, export_archive, has_key, set_key, remove_key, probe,
+            import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
+            has_key, set_key, remove_key, probe,
         ])
         .run(tauri::generate_context!())
         .expect("WhaleSwitch desktop runtime failed");

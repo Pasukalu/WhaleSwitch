@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+- Export and import a named profile as JSON, preserving explicit unset values.
+- Review the profile name before saving an import and choose another name if it already exists.
+- File transfer validates the tool and fields and uses the existing atomic export path.
+
 ## 1.0.0
 
 - Named configuration profiles per tool. Capture the current file or a draft, review field-level changes and apply through the existing snapshot-and-save path.

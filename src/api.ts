@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { demo } from "./demo";
-import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfilePreview, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 function request<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -21,6 +21,9 @@ export const api = {
   deleteProfile: (tool: Tool, id: number) => request<void>("delete_profile", { tool, id }),
   renameProfile: (tool: Tool, id: number, name: string) => request<Profile>("rename_profile", { tool, id, name }),
   duplicateProfile: (tool: Tool, id: number, name: string) => request<Profile>("duplicate_profile", { tool, id, name }),
+  readProfileArchive: (tool: Tool) => request<ProfileArchive>("read_profile_archive", { tool }),
+  importProfile: (tool: Tool, archive: ProfileArchive, name: string) => request<Profile>("import_profile", { tool, archive, name }),
+  exportProfileArchive: (tool: Tool, id: number) => request<void>("export_profile_archive", { tool, id }),
   compareSnapshot: (target: Target, id: number) => request<Change[]>("compare_snapshot", { target, id }),
   restore: (target: Target, id: number) => request<View>("restore", { target, id }),
   importArchive: (tool: Tool) => request<Fields>("import_archive", { tool }),

@@ -215,6 +215,59 @@ fn renaming_and_duplicating_profiles_does_not_write_live_configuration() {
 }
 
 #[test]
+fn portable_profiles_keep_explicit_defaults_and_do_not_apply_on_import() {
+    let f = fixture(ClosedVault);
+    let tool = Tool::Codex;
+    let original = "model = 'live'\nmodel_verbosity = 'high'\n# private note\n";
+    fs::write(&f.files[0], original).unwrap();
+    let view = f.engine.view(tool).unwrap();
+    let patch: Fields = [(Field::Model, Some("portable".into())), (Field::ModelVerbosity, None)].into_iter().collect();
+    let profile = f.engine.create_profile(tool, &view.path, &view.revision, "Work", &patch).unwrap();
+    let destination = f.dir.path().canonicalize().unwrap().join("work.profile.json");
+    f.engine.export_profile_archive(tool, profile.id, &destination).unwrap();
+    let bytes = fs::read(&destination).unwrap();
+    let raw = String::from_utf8_lossy(&bytes);
+    assert!(!raw.contains("private note"));
+    assert!(!raw.contains("timestamp"));
+    assert!(!raw.contains("revision"));
+    assert!(matches!(f.engine.export_profile_archive(tool, profile.id, &destination), Err(Error::Conflict)));
+    assert_eq!(fs::read(&destination).unwrap(), bytes);
+    assert!(matches!(f.engine.read_profile_archive(Tool::Claude, &destination), Err(Error::WrongTool)));
+    assert!(matches!(f.engine.import_archive(tool, &destination), Err(Error::InvalidArchive)));
+
+    let archive = f.engine.read_profile_archive(tool, &destination).unwrap();
+    assert_eq!(archive.name, profile.name);
+    assert_eq!(archive.fields.get(&Field::ModelVerbosity), Some(&None));
+    assert!(matches!(f.engine.import_profile(tool, archive, "work"), Err(Error::ProfileNameExists)));
+    let archive = f.engine.read_profile_archive(tool, &destination).unwrap();
+    let imported = f.engine.import_profile(tool, archive, "Travel").unwrap();
+    assert_ne!(imported.id, profile.id);
+    assert_eq!(imported.fields, profile.fields);
+    let review = f.engine.preview_profile(tool, &view.path, &view.revision, imported.id).unwrap();
+    assert!(review.changes.iter().any(|change| change.field == Field::ModelVerbosity
+        && change.before.as_deref() == Some("high") && change.after.is_none()));
+    assert_eq!(fs::read_to_string(&f.files[0]).unwrap(), original);
+    assert!(f.engine.snapshots(tool).unwrap().is_empty());
+}
+
+#[test]
+fn profile_import_rejects_invalid_or_unsupported_archive_content() {
+    let f = fixture(ClosedVault);
+    let destination = f.dir.path().canonicalize().unwrap().join("untrusted.profile.json");
+    for contents in [
+        r#"{"version":2,"tool":"codex","name":"Work","fields":{}}"#,
+        r#"{"version":1,"tool":"codex","name":"Work","fields":{"default_agent":"build"}}"#,
+        r#"{"version":1,"tool":"codex","name":"Work","fields":{},"secret":"opaque"}"#,
+        r#"{"version":1,"tool":"codex","name":"Work","fields":{"model":"first","model":"second"}}"#,
+        r#"{"version":1,"tool":"codex","name":"sk-secret","fields":{}}"#,
+    ] {
+        fs::write(&destination, contents).unwrap();
+        assert!(matches!(f.engine.read_profile_archive(Tool::Codex, &destination), Err(Error::InvalidArchive)));
+    }
+    assert!(f.engine.profiles(Tool::Codex).unwrap().is_empty());
+}
+
+#[test]
 fn edits_the_verified_endpoint_inside_claude_env_without_exposing_other_keys() {
     let f = fixture(TestVault::default());
     let tool = Tool::Claude;

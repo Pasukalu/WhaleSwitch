@@ -14,6 +14,7 @@ export type ToolInfo = { tool: Tool; installed: boolean; executable: string | nu
 export type Change = { field: Field; before: string | null; after: string | null };
 export type Snapshot = { id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" };
 export type Profile = { id: number; name: string; timestamp: number; fields: Fields };
+export type ProfileArchive = { version: 1; tool: Tool; name: string; fields: Fields };
 export type ProfilePreview = { name: string; changes: Change[] };
 export type ProbeInput = { tool: Tool; protocol: Protocol; endpoint: string; anonymous?: boolean };
 export type ProbeResult = {

@@ -13,7 +13,7 @@ pub use desktop::run;
 pub use adapters::{Field, Fields, Format, Tool, ToolInfo};
 pub use engine::{Change, Engine, Export, View};
 pub use probe::{ProbeInput, ProbeResult, Protocol};
-pub use profiles::{Profile, ProfilePreview};
+pub use profiles::{Profile, ProfileArchive, ProfilePreview};
 pub use storage::{SecretStore, Snapshot};
 
 use serde::Serialize;

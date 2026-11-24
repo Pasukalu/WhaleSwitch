@@ -1,9 +1,9 @@
 use crate::{storage::{SecretStore, Snapshot, Storage, SystemVault}, Error, Field, Fields, Format, Result, Tool, ToolInfo};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{fs::{self, File, Permissions}, io::{Read, Write}, path::{Path, PathBuf}};
 use zeroize::Zeroizing;
-use crate::{Profile, ProfilePreview};
+use crate::{Profile, ProfileArchive, ProfilePreview};
 
 pub const MAX_CONFIG: u64 = 2 * 1024 * 1024;
 pub const MAX_ARCHIVE: u64 = 64 * 1024;
@@ -189,6 +189,24 @@ impl Engine {
         self.storage.delete_profile(tool, id)
     }
 
+    pub fn read_profile_archive(&self, tool: Tool, source: &Path) -> Result<ProfileArchive> {
+        let archive: ProfileArchive = read_archive(source)?;
+        archive.validate(tool)?;
+        Ok(archive)
+    }
+
+    pub fn import_profile(&self, tool: Tool, archive: ProfileArchive, name: &str) -> Result<Profile> {
+        archive.validate(tool)?;
+        let _lock = self.storage.lock()?;
+        self.storage.create_profile(tool, name, archive.fields)
+    }
+
+    pub fn export_profile_archive(&self, tool: Tool, id: i64, destination: &Path) -> Result<()> {
+        let profile = self.storage.profile(tool, id)?;
+        let archive = ProfileArchive { version: 1, tool, name: profile.name, fields: profile.fields };
+        write_archive(destination, &archive)
+    }
+
     pub fn snapshot(&self, tool: Tool, target: &str, revision: &str) -> Result<Snapshot> {
         let _lock = self.storage.lock()?;
         let path = self.bound_target(tool, target)?;
@@ -229,11 +247,7 @@ impl Engine {
     }
 
     pub fn import_archive(&self, tool: Tool, source: &Path) -> Result<Fields> {
-        let state = read_state(source, MAX_ARCHIVE)?;
-        let bytes = state.bytes.ok_or(Error::InvalidArchive)?;
-        let text = decode(&bytes).map_err(|_| Error::InvalidArchive)?;
-        crate::jsonc::parse(text, false).map_err(|_| Error::InvalidArchive)?;
-        let archive: Export = serde_json::from_str(text).map_err(|_| Error::InvalidArchive)?;
+        let archive: Export = read_archive(source)?;
         if archive.version != 1 { return Err(Error::InvalidArchive); }
         if archive.tool != tool { return Err(Error::WrongTool); }
         tool.validate(&archive.fields).map_err(|_| Error::InvalidArchive)?;
@@ -245,10 +259,8 @@ impl Engine {
         let view = self.view_at(tool, &path)?;
         if view.revision != revision { return Err(Error::Conflict); }
         if !view.exists || view.issue.is_some() { return Err(Error::InvalidArchive); }
-        if metadata(destination)?.is_some() { return Err(Error::Conflict); }
         let archive = Export { version: 1, tool, fields: view.fields.into_iter().filter(|(_, value)| value.is_some()).collect() };
-        let bytes = serde_json::to_vec_pretty(&archive).map_err(|_| Error::InvalidArchive)?;
-        atomic_write(destination, &bytes, None, false)
+        write_archive(destination, &archive)
     }
 
     fn bound_target(&self, tool: Tool, expected: &str) -> Result<PathBuf> {
@@ -305,6 +317,20 @@ fn difference(before: &Fields, after: &Fields) -> Vec<Change> {
 fn decode(bytes: &[u8]) -> Result<&str> {
     let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
     std::str::from_utf8(bytes).map_err(|_| Error::InvalidConfig)
+}
+
+fn read_archive<T: DeserializeOwned>(source: &Path) -> Result<T> {
+    let state = read_state(source, MAX_ARCHIVE)?;
+    let bytes = state.bytes.ok_or(Error::InvalidArchive)?;
+    let text = decode(&bytes).map_err(|_| Error::InvalidArchive)?;
+    crate::jsonc::parse(text, false).map_err(|_| Error::InvalidArchive)?;
+    serde_json::from_str(text).map_err(|_| Error::InvalidArchive)
+}
+
+fn write_archive(destination: &Path, archive: &impl Serialize) -> Result<()> {
+    if metadata(destination)?.is_some() { return Err(Error::Conflict); }
+    let bytes = serde_json::to_vec_pretty(archive).map_err(|_| Error::InvalidArchive)?;
+    atomic_write(destination, &bytes, None, false)
 }
 
 fn digest(bytes: &[u8]) -> String { hex::encode(Sha256::digest(bytes)) }

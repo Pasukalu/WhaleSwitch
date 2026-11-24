@@ -10,7 +10,7 @@ import { DiffDialog } from "./components/diff-dialog";
 import { Profiles, type ProfileEdit } from "./components/profiles";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, fieldPatch, fieldPath, targetOf, type Change, type Field, type Fields, type Profile, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
+import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, fieldPatch, fieldPath, targetOf, type Change, type Field, type Fields, type Profile, type ProfileArchive, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
@@ -222,6 +222,25 @@ export function App() {
     });
   }
 
+  async function pickProfileArchive(): Promise<ProfileArchive | null> {
+    let archive: ProfileArchive | null = null;
+    await run(async () => { archive = await api.readProfileArchive(tool); });
+    return archive;
+  }
+
+  function importProfile(archive: ProfileArchive, name: string) {
+    return run(async () => {
+      const saved = await api.importProfile(tool, archive, name);
+      setProfiles((previous) => [saved, ...previous]);
+      success(t.profileImported);
+    });
+  }
+
+  async function exportProfile(profile: Profile) {
+    await api.exportProfileArchive(tool, profile.id);
+    success(t.profileExported);
+  }
+
   async function removeProfile(profile: Profile) {
     if (!window.confirm(`${t.profileDeletePrompt}\n${profile.name}`)) return;
     await api.deleteProfile(tool, profile.id);
@@ -315,7 +334,9 @@ export function App() {
                   available={Boolean(view && !view.issue)} dirty={dirty} busy={busy} loading={profilesLoading}
                   error={profilesProblem ? errorText(profilesProblem, language) : null}
                   onCreate={createProfile} onApply={(profile) => void run(() => previewProfile(profile))}
-                  onRemove={(profile) => void run(() => removeProfile(profile))} onEdit={editProfile}/>
+                  onRemove={(profile) => void run(() => removeProfile(profile))} onEdit={editProfile}
+                  canTransfer={!previewMode} onPickArchive={pickProfileArchive} onImport={importProfile}
+                  onExport={(profile) => void run(() => exportProfile(profile))}/>
                 : tab === "snapshots" ? <section className="panel">
                   <div className="panel-head spread"><div className="head-label"><div className="section-icon"><History size={19}/></div><div><h2>{t.snapshots}</h2><p>{t.safeStorage}</p></div></div>
                     <Button variant="outline" size="sm" disabled={busy || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>
