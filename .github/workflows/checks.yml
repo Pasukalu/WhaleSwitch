@@ -11,6 +11,30 @@ permissions:
   contents: read
 
 jobs:
+  cancel_superseded:
+    name: Cancel superseded release builds
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/v')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel older runs for this release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          runs=$(gh run list --workflow checks.yml --branch "$GITHUB_REF_NAME" --event push \
+            --limit 20 --json databaseId,number,status)
+          older=$(jq -r --argjson current "$GITHUB_RUN_NUMBER" \
+            '.[] | select(.number < $current and .status != "completed") | .databaseId' <<< "$runs")
+          while IFS= read -r run; do
+            [[ -n "$run" ]] || continue
+            if ! gh run cancel "$run"; then
+              [[ "$(gh run view "$run" --json status --jq '.status')" == completed ]]
+            fi
+          done <<< "$older"
+
   desktop:
     name: Test and build ${{ matrix.target }}
     strategy:
@@ -70,9 +94,9 @@ jobs:
   release:
     name: Prepare release installers
     if: >-
-      github.event_name == 'push' &&
-      (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v'))
-    needs: desktop
+      !cancelled() && github.event_name == 'push' && needs.desktop.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || needs.cancel_superseded.result == 'success')
+    needs: [desktop, cancel_superseded]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -120,6 +144,11 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             options+=(--verify-tag --draft)
           else
+            branch_head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" --jq '.object.sha')
+            if [[ "$branch_head" != "$GITHUB_SHA" ]]; then
+              echo "::error::A newer release build superseded this commit."
+              exit 1
+            fi
             comparison=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...main" --jq '.status')
             if [[ "$comparison" != identical && "$comparison" != ahead ]]; then
               echo "::error::A release branch must point to a commit already on main."

@@ -26,7 +26,7 @@ pub(crate) fn prepare(executable: &Path) -> Result<Option<PortableLayout>> {
     let data = parent.join(DATA_FOLDER);
     prepare_directory(&data)?;
     for name in [
-        "write.lock", "snapshots.sqlite3", "snapshots.sqlite3-journal",
+        "snapshots.sqlite3", "snapshots.sqlite3-journal",
         "snapshots.sqlite3-wal", "snapshots.sqlite3-shm",
     ] {
         metadata(&data.join(name))?;
@@ -78,6 +78,23 @@ mod tests {
         fs::write(root.join(DATA_FOLDER), "keep this file").unwrap();
         assert!(matches!(prepare(&executable), Err(Error::UnsafePath)));
         assert_eq!(fs::read_to_string(root.join(DATA_FOLDER)).unwrap(), "keep this file");
+    }
+
+    #[test]
+    fn separate_state_directories_share_the_installation_write_lock() {
+        use crate::storage::Storage;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let system_data = root.join("installed");
+        let portable_data = root.join(DATA_FOLDER);
+        let installed = Storage::new(system_data.clone());
+        let portable = Storage::with_lock_dir(portable_data.clone(), system_data);
+        let guard = installed.lock().unwrap();
+        assert!(matches!(portable.lock(), Err(Error::Conflict)));
+        assert!(!portable_data.exists());
+        drop(guard);
+        assert!(portable.lock().is_ok());
+        assert!(!portable_data.exists());
     }
 
     #[cfg(unix)]

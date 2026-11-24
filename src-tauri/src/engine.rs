@@ -61,6 +61,11 @@ impl Engine {
         Self { storage: Storage::new(app_data), vault: Box::new(SystemVault), paths: None }
     }
 
+    #[cfg(feature = "desktop")]
+    pub(crate) fn with_lock_dir(app_data: PathBuf, lock_dir: PathBuf) -> Self {
+        Self { storage: Storage::with_lock_dir(app_data, lock_dir), vault: Box::new(SystemVault), paths: None }
+    }
+
     #[doc(hidden)]
     pub fn isolated(app_data: PathBuf, paths: [PathBuf; 3], vault: Box<dyn SecretStore>) -> Self {
         Self { storage: Storage::new(app_data), vault, paths: Some(paths) }

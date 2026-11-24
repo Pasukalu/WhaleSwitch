@@ -45,17 +45,22 @@ pub struct Snapshot {
     pub reason: String,
 }
 
-pub struct Storage { dir: PathBuf }
+pub struct Storage {
+    dir: PathBuf,
+    lock_dir: PathBuf,
+}
 
 impl Storage {
-    pub fn new(dir: PathBuf) -> Self { Self { dir } }
+    pub fn new(dir: PathBuf) -> Self { Self::with_lock_dir(dir.clone(), dir) }
+
+    pub fn with_lock_dir(dir: PathBuf, lock_dir: PathBuf) -> Self { Self { dir, lock_dir } }
 
     pub fn exists(&self) -> bool { self.dir.join("snapshots.sqlite3").is_file() }
 
     pub fn lock(&self) -> Result<File> {
-        fs::create_dir_all(&self.dir).map_err(|_| Error::Io)?;
+        fs::create_dir_all(&self.lock_dir).map_err(|_| Error::Io)?;
         let file = OpenOptions::new().create(true).truncate(false).read(true).write(true)
-            .open(self.dir.join("write.lock")).map_err(|_| Error::Io)?;
+            .open(self.lock_dir.join("write.lock")).map_err(|_| Error::Io)?;
         fs2::FileExt::try_lock_exclusive(&file).map_err(|e| {
             if e.kind() == std::io::ErrorKind::WouldBlock { Error::Conflict } else { Error::Io }
         })?;

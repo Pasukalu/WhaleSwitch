@@ -209,18 +209,19 @@ pub fn run() {
         .setup(|app| {
             let config = &app.config().app.windows[0];
             let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
+            let system_data = app.path().app_local_data_dir()?;
             #[cfg(windows)]
             let (builder, data, portable) = match crate::portable::prepare(&std::env::current_exe()?) {
                 Ok(Some(layout)) => (builder.data_directory(layout.webview), layout.data, true),
-                Ok(None) => (builder, app.path().app_local_data_dir()?, false),
+                Ok(None) => (builder, system_data.clone(), false),
                 Err(_) => return Err(std::io::Error::other(
                     "Portable storage is unavailable. Extract WhaleSwitch to a regular writable folder.",
                 ).into()),
             };
             #[cfg(not(windows))]
-            let (data, portable) = (app.path().app_local_data_dir()?, false);
+            let (data, portable) = (system_data.clone(), false);
             app.manage(RuntimeInfo { portable, data_dir: data.to_string_lossy().into_owned() });
-            app.manage(Engine::new(data));
+            app.manage(Engine::with_lock_dir(data, system_data));
             builder.build()?;
             Ok(())
         })
