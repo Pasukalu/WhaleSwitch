@@ -111,7 +111,7 @@ pub(super) fn inspect(request: RequestBuilder) -> ProbeResult {
     result
 }
 
-fn causes(error: &(dyn StdError + 'static)) -> impl Iterator<Item = &(dyn StdError + 'static)> {
+fn causes<'a>(error: &'a (dyn StdError + 'static)) -> impl Iterator<Item = &'a (dyn StdError + 'static)> {
     std::iter::successors(Some(error), |cause| {
         let cause = *cause;
         // io::Error::source() can skip the immediately wrapped error.
