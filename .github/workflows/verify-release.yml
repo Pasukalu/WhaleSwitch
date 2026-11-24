@@ -177,11 +177,22 @@ jobs:
         env:
           BUNDLE_PATH: ${{ steps.sigstore.outputs.bundle-path }}
         run: |
-          for package in release-assets/*.exe release-assets/*.zip release-assets/*.dmg release-assets/*.deb; do
-            gh attestation verify "$package" --bundle "$BUNDLE_PATH" --repo "$GITHUB_REPOSITORY" \
+          verify_statement() {
+            gh attestation verify "$1" --bundle "$BUNDLE_PATH" --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/verify-release.yml" \
               --predicate-type "$PREDICATE_TYPE" --deny-self-hosted-runners
+          }
+          for package in release-assets/*.exe release-assets/*.zip release-assets/*.dmg release-assets/*.deb; do
+            verify_statement "$package"
           done
+          modified=$(mktemp "$RUNNER_TEMP/whaleswitch-modified.XXXXXX")
+          cp release-assets/*-portable.zip "$modified"
+          printf '\0' >> "$modified"
+          if verify_statement "$modified" >"$RUNNER_TEMP/modified-verification.log" 2>&1; then
+            echo 'Unexpected signature acceptance after modifying the portable ZIP.' >&2
+            exit 1
+          fi
+          echo 'A modified portable ZIP was rejected.'
           name="WhaleSwitch-${RELEASE_TAG#v}-verification.sigstore.json"
           existing=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets | jq --arg name "$name" '[.assets[] | select(.name == $name)] | length')
           if [[ "$existing" == 0 ]]; then

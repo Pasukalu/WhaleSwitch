@@ -35,7 +35,7 @@ impl SecretStore for ScopedVault {
 
 impl Drop for ScopedVault {
     fn drop(&mut self) {
-        for account in self.accounts.get_mut().unwrap() {
+        for account in self.accounts.get_mut().unwrap().iter() {
             let _ = SystemVault.remove(account);
         }
     }

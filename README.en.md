@@ -22,7 +22,7 @@ Choose a platform in [GitHub Releases](https://github.com/Pasukalu/WhaleSwitch/r
 | macOS Intel | `*-macos-x64.dmg` | Mount the disk image and drag WhaleSwitch to Applications. |
 | Ubuntu x64 | `*-linux-x64.deb` | Open it with the installer or use `sudo apt install` with the selected local `.deb`. |
 
-Public prerelease installers are unsigned. Release notes list the verification completed for each build. Linux credential operations require an available and unlocked Secret Service. See the [checksum examples](README.md#安装).
+Release notes identify each version's platform signing status and retest coverage. A detached Sigstore statement signs the retest results and digests of the five v1.6.0 packages. Linux credential operations require an available and unlocked Secret Service. See [release verification](docs/RELEASE-VERIFICATION.md) and the [checksum examples](README.md#安装).
 
 ## First run
 

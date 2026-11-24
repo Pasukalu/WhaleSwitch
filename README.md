@@ -22,7 +22,7 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 | macOS Intel | `*-macos-x64.dmg` | 挂载 DMG，将 WhaleSwitch 拖到 Applications。 |
 | Ubuntu x64 | `*-linux-x64.deb` | 用软件安装器打开，或在下载目录用 `sudo apt install` 安装选定的 `.deb`。 |
 
-公开预发行包为未签名构建。发布页记录各版本的测试范围。Linux 的密钥库操作需要桌面会话中的 Secret Service 可用并解锁。
+发布页记录各版本的系统签名状态和复测范围。v1.6.0 使用 Sigstore 对复测记录和五个下载包的摘要签名。系统签名及验证命令见 [发布验证](docs/RELEASE-VERIFICATION.md)。Linux 的密钥库操作需要桌面会话中的 Secret Service 可用并解锁。
 
 <details>
 <summary>校验安装包 SHA-256</summary>
