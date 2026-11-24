@@ -1,5 +1,6 @@
 use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
 use crate::{scan_project_config, scan_project_skills, ConfigInspection, ProjectConfigReport, SkillInventory};
+use crate::{ConfigPlan, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -168,6 +169,57 @@ async fn export_profile_archive(app: AppHandle, tool: Tool, id: i64) -> Result<(
     }).await
 }
 
+#[tauri::command]
+async fn plans(app: AppHandle) -> Result<Vec<ConfigPlan>> {
+    blocking(move || app.state::<Engine>().plans()).await
+}
+
+#[tauri::command]
+async fn create_plan(app: AppHandle, name: String, profiles: Vec<PlanProfile>) -> Result<ConfigPlan> {
+    blocking(move || app.state::<Engine>().create_plan(&name, &profiles)).await
+}
+
+#[tauri::command]
+async fn delete_plan(app: AppHandle, id: i64) -> Result<()> {
+    blocking(move || app.state::<Engine>().delete_plan(id)).await
+}
+
+#[tauri::command]
+async fn read_plan_archive(app: AppHandle) -> Result<PlanArchive> {
+    blocking(move || {
+        let path = pick_archive(&app, "WhaleSwitch Plan JSON")?;
+        app.state::<Engine>().read_plan_archive(&path)
+    }).await
+}
+
+#[tauri::command]
+async fn import_plan(app: AppHandle, archive: PlanArchive, name: String) -> Result<ConfigPlan> {
+    blocking(move || app.state::<Engine>().import_plan(archive, &name)).await
+}
+
+#[tauri::command]
+async fn export_plan(app: AppHandle, id: i64) -> Result<()> {
+    blocking(move || {
+        let path = save_archive_as(&app, "whaleswitch-plan.json".to_string(), "WhaleSwitch Plan JSON")?;
+        app.state::<Engine>().export_plan(id, &path)
+    }).await
+}
+
+#[tauri::command]
+async fn preview_plan(app: AppHandle, id: i64) -> Result<Vec<PlanPreview>> {
+    blocking(move || app.state::<Engine>().preview_plan(id)).await
+}
+
+#[tauri::command]
+async fn apply_plan(app: AppHandle, id: i64, selections: Vec<PlanSelection>) -> Result<PlanRun> {
+    blocking(move || app.state::<Engine>().apply_plan(id, &selections)).await
+}
+
+#[tauri::command]
+async fn plan_runs(app: AppHandle) -> Result<Vec<PlanRun>> {
+    blocking(move || app.state::<Engine>().plan_runs()).await
+}
+
 fn pick_archive(app: &AppHandle, label: &str) -> Result<PathBuf> {
     app.dialog().file().add_filter(label, &["json"]).blocking_pick_file().ok_or(Error::Cancelled)?
         .into_path().map_err(|_| Error::UnsafePath)
@@ -230,6 +282,7 @@ pub fn run() {
             compare_snapshot_fields, restore_snapshot_fields,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
+            plans, create_plan, delete_plan, read_plan_archive, import_plan, export_plan, preview_plan, apply_plan, plan_runs,
             has_key, set_key, remove_key, probe, pick_project_skills, pick_project_config,
         ])
         .run(tauri::generate_context!())

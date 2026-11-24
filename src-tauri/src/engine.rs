@@ -6,6 +6,8 @@ use std::{fs::{self, File, Permissions}, io::{Read, Write}, path::{Path, PathBuf
 use zeroize::Zeroizing;
 use crate::{Profile, ProfileArchive, ProfilePreview};
 
+mod plan_apply;
+
 pub const MAX_CONFIG: u64 = 2 * 1024 * 1024;
 pub const MAX_ARCHIVE: u64 = 64 * 1024;
 const MISSING: &str = "missing";
@@ -138,13 +140,7 @@ impl Engine {
 
     fn write_patch(&self, tool: Tool, path: &Path, state: &FileState, patch: &Fields, reason: &str) -> Result<View> {
         if patch.is_empty() { return read_config_view(tool, path); }
-        let format = tool.format(path);
-        let text = state.text(format)?;
-        let edited = Zeroizing::new(tool.apply(format, text, patch)?);
-        tool.read(format, &edited)?;
-        let mut bytes = Zeroizing::new(Vec::new());
-        if state.bytes.as_ref().is_some_and(|b| b.starts_with(&[0xef, 0xbb, 0xbf])) { bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]); }
-        bytes.extend_from_slice(edited.as_bytes());
+        let bytes = patched_config(tool, path, state, patch)?;
         self.commit(tool, path, state, &bytes, reason)?;
         read_config_view(tool, path)
     }
@@ -373,6 +369,17 @@ pub(crate) fn read_config_view(tool: Tool, path: &Path) -> Result<View> {
 fn changed_patch(before: &Fields, patch: &Fields) -> Fields {
     patch.iter().filter(|(key, value)| before.get(*key) != Some(*value))
         .map(|(&field, value)| (field, value.clone())).collect()
+}
+
+fn patched_config(tool: Tool, path: &Path, state: &FileState, patch: &Fields) -> Result<Zeroizing<Vec<u8>>> {
+    let format = tool.format(path);
+    let edited = Zeroizing::new(tool.apply(format, state.text(format)?, patch)?);
+    tool.read(format, &edited)?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    if state.bytes.as_ref().is_some_and(|b| b.starts_with(&[0xef, 0xbb, 0xbf])) { bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]); }
+    bytes.extend_from_slice(edited.as_bytes());
+    if bytes.len() as u64 > MAX_CONFIG { return Err(Error::FileTooLarge); }
+    Ok(bytes)
 }
 
 fn difference(before: &Fields, after: &Fields) -> Vec<Change> {

@@ -1,6 +1,7 @@
 mod adapters;
 mod engine;
 mod jsonc;
+mod plans;
 mod probe;
 mod profiles;
 #[cfg(any(all(windows, feature = "desktop"), test))]
@@ -16,15 +17,16 @@ pub use desktop::run;
 
 pub use adapters::{ConfigEnv, Field, Fields, Format, Tool, ToolInfo};
 pub use engine::{Change, Engine, Export, View};
+pub use plans::{ConfigPlan, PlanArchive, PlanEntry, PlanFileResult, PlanFileStatus, PlanPreview, PlanProfile, PlanRun, PlanSelection};
 pub use probe::{ProbeInput, ProbeResult, Protocol};
 pub use profiles::{Profile, ProfileArchive, ProfilePreview};
 pub use skills::{scan_project_skills, SkillEntry, SkillInventory};
 pub use sources::{scan_project_config, ConfigInspection, ConfigObservation, ProjectConfigReport, ProjectConfigSource, ProjectScope};
 pub use storage::{SecretStore, Snapshot};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Error {
     PathUnavailable,
@@ -48,6 +50,11 @@ pub enum Error {
     ProfileNameExists,
     ProfileMissing,
     ProfileStorage,
+    InvalidPlan,
+    PlanNameExists,
+    PlanMissing,
+    PlanStorage,
+    PlanOverlap,
     Io,
     WriteFailed,
     RolledBack,

@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
-import type { Change, ConfigInspection, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, RuntimeInfo, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, RuntimeInfo, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
@@ -33,6 +33,15 @@ export const api = {
   readProfileArchive: (tool: Tool) => request<ProfileArchive>("read_profile_archive", { tool }),
   importProfile: (tool: Tool, archive: ProfileArchive, name: string) => request<Profile>("import_profile", { tool, archive, name }),
   exportProfileArchive: (tool: Tool, id: number) => request<void>("export_profile_archive", { tool, id }),
+  plans: () => request<ConfigPlan[]>("plans"),
+  createPlan: (name: string, profiles: PlanProfile[]) => request<ConfigPlan>("create_plan", { name, profiles }),
+  deletePlan: (id: number) => request<void>("delete_plan", { id }),
+  readPlanArchive: () => request<PlanArchive>("read_plan_archive"),
+  importPlan: (archive: PlanArchive, name: string) => request<ConfigPlan>("import_plan", { archive, name }),
+  exportPlan: (id: number) => request<void>("export_plan", { id }),
+  previewPlan: (id: number) => request<PlanPreview[]>("preview_plan", { id }),
+  applyPlan: (id: number, selections: PlanSelection[]) => request<PlanRun>("apply_plan", { id, selections }),
+  planRuns: () => request<PlanRun[]>("plan_runs"),
   compareSnapshot: (target: Target, id: number) => request<Change[]>("compare_snapshot", { target, id }),
   compareSnapshotFields: (target: Target, id: number) => request<Change[]>("compare_snapshot_fields", { target, id }),
   restoreSnapshotFields: (target: Target, id: number, selection: Fields) => request<View>("restore_snapshot_fields", { target, id, selection }),

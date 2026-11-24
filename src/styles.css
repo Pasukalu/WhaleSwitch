@@ -161,6 +161,13 @@ h1, h2, h3, p { margin: 0; }
 .snapshot-row { display: flex; gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--edge); }
 .snapshot-row:last-child { border: 0; }
 .snapshot-actions { flex-wrap: wrap; justify-content: flex-end; }
+.snapshot-row:focus { outline: 2px solid var(--ice); outline-offset: -2px; border-radius: 6px; }
+.plan-tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 9px; }
+.plan-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px; }
+.plan-target { border: 1px solid var(--edge); border-radius: 8px; padding: 10px; display: grid; gap: 8px; }
+.plan-run { border: 1px solid var(--edge); border-radius: 8px; padding: 9px; }
+.plan-run summary { cursor: pointer; }
+.plan-run .plan-line { border-top: 1px solid var(--edge); margin-top: 8px; padding-top: 7px; }
 .profile-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
 .profile-form .row-actions > button { min-height: 40px; }
 .profiles-list, .profile-empty { border-top: 1px solid var(--edge); }

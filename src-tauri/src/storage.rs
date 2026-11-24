@@ -87,6 +87,14 @@ impl Storage {
               id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT NOT NULL,
               name TEXT NOT NULL COLLATE NOCASE, timestamp INTEGER NOT NULL, fields TEXT NOT NULL,
               UNIQUE(tool, name)
+            );
+            CREATE TABLE IF NOT EXISTS config_plans (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+              timestamp INTEGER NOT NULL, entries TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS plan_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, timestamp INTEGER NOT NULL,
+              finished INTEGER NOT NULL, entries TEXT NOT NULL
             );")
             .map_err(|_| Error::BackupFailed)?;
         Ok(db)

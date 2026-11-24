@@ -8,7 +8,7 @@
 
 [English](README.en.md) · [下载安装包](https://github.com/Pasukalu/WhaleSwitch/releases) · [源码审查](docs/CODE-REVIEW.md) · [更新日志](CHANGELOG.md)
 
-WhaleSwitch 用于查清配置从哪里读入、比较改动、复用常用设置以及恢复历史版本。支持简体中文和 English，外观可选择深色、浅色或跟随系统。
+WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具配置方案以及恢复历史版本。支持简体中文和 English，外观可选择深色、浅色或跟随系统。
 
 ## 安装
 
@@ -30,16 +30,16 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、复用常用设�
 在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
 ```powershell
-Get-FileHash .\WhaleSwitch-1.5.0-windows-x64.exe -Algorithm SHA256
-Get-FileHash .\WhaleSwitch-1.5.0-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.6.0-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.6.0-windows-x64-portable.zip -Algorithm SHA256
 ```
 
 ```sh
 # macOS Apple Silicon
-shasum -a 256 -c WhaleSwitch-1.5.0-macos-arm64.dmg.sha256
+shasum -a 256 -c WhaleSwitch-1.6.0-macos-arm64.dmg.sha256
 
 # Ubuntu
-sha256sum -c WhaleSwitch-1.5.0-linux-x64.deb.sha256
+sha256sum -c WhaleSwitch-1.6.0-linux-x64.deb.sha256
 ```
 
 </details>
@@ -50,6 +50,12 @@ sha256sum -c WhaleSwitch-1.5.0-linux-x64.deb.sha256
 2. **编辑和预览。** 在 **配置** 修改已支持的字段，选择 **查看差异** 并确认。已有文件会先创建加密快照，再执行修订校验和原子替换。
 3. **复用或恢复。** 在 **配置档案** 保存和导入日常设置。需要撤销某项改动时，打开 **快照 → 按字段恢复**，预览并勾选要恢复的设置。
 4. **处理外部改动。** 切回窗口或手动扫描后，有草稿时会列出旧值、文件当前值和草稿。同一路径下可逐项合并，随后重新预览提交。
+
+### 切换多工具配置
+
+1. 在 **配置档案** 保存各工具的常用设置，再到 **配置方案** 选择最多三个工具的档案并保存方案。也可以导入方案 JSON。
+2. 打开 **预览方案**，核对每种工具的本地目标路径并勾选字段。清除字段需主动勾选。有外部变更时重新预览。
+3. 选择 **应用所选字段**。替换第一个文件之前，应用会验证所有待写的已有文件的加密快照。出现失败或进程中断时，可在 **最近执行** 核对逐工具状态和可用快照。
 
 ## 工具与配置范围
 
@@ -66,6 +72,7 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 | 配置来源 | 查看编辑目标、相关环境变量设置状态和项目配置候选文件。项目读取为只读，仅返回状态与支持字段名。 |
 | 项目技能 | 选择项目目录，检查 `.agents/skills`、`.claude/skills` 和 `.opencode/skills` 的 `SKILL.md`，查看候选 CLI、同名目录与文件指纹。 |
 | 配置档案 | 保存、重命名、复制、导出和导入档案。应用前预览差异，带清除动作的字段初始不勾选。 |
+| 配置方案 | 保存或导入跨工具的字段组合。一次预览所有目标，按需提交并查看每次执行的恢复入口。 |
 | 快照 | 手动创建、比较、按字段恢复和恢复整份文件。按字段恢复会保留当前文件中的其他字段和未知配置。语法损坏时可恢复整份文件。 |
 | 连接测试 | 对 OpenAI 兼容或 Anthropic 端点发起模型列表请求，显示状态、耗时和模型数。OpenAI 兼容的回环服务可使用无密钥模式。 |
 
@@ -73,6 +80,7 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 
 - 快照以加密形式存入本地 SQLite，快照密钥和连接测试 API 密钥保存在操作系统安全存储中。已有配置需要通过加密备份校验后才会写入。
 - 配置档案的 JSON 仅包含工具、名称与支持字段，保留显式清除值。换设备时可导入档案，再勾选需要迁移的字段。
+- 方案 JSON 包含版本、名称和每个工具的支持字段。密钥、本机配置路径及历史快照保存在本地。
 - 连接测试使用服务商签发的 API 密钥，仅在手动触发时发送请求。密钥按工具、协议及具体请求 URL 隔离，重定向与系统代理继承均已禁用。
 - 项目盘点读取固定候选文件及技能清单。结果取决于所选目录，连接凭据、登录会话和项目脚本不参与盘点。 [架构与安全](docs/ARCHITECTURE.md)
 
@@ -81,17 +89,17 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 需要 Node.js 22.13+、npm、stable Rust 和 Tauri 2 平台依赖。 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)
 
 ```sh
-npm install
+npm ci
 npm run tauri dev
 npm run typecheck
 npm test
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
-npm run tauri build
+cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features
+npm run tauri build -- -- --locked
 ```
 
 `npm run dev` 启动使用模拟数据的浏览器预览。实际目录扫描、加密快照和密钥库操作在桌面版内验证。
 
-CI 在 Windows x64、macOS Apple Silicon、macOS Intel 和 Ubuntu x64 上运行类型检查、前端与 Rust 测试，再生成四套安装包和 Windows 便携 ZIP。维护者可用匹配版本的标签生成发布草稿，或从 `main` 上的提交推送 `release/vX.Y.Z` 分支发布预发行包。发布任务校验版本、五套下载包及其 SHA-256 文件。 [构建工作流](.github/workflows/checks.yml)
+CI 按锁文件安装依赖，在 Windows x64、macOS Apple Silicon、macOS Intel 和 Ubuntu x64 上运行类型检查及前后端测试，随后生成安装包。Windows 任务还会解压并启动便携 ZIP。维护者可用匹配版本的标签生成发布草稿，或从 `main` 上的提交推送 `release/vX.Y.Z` 分支发布预发行包。发布任务校验版本、五套下载包及其 SHA-256 文件。 [构建工作流](.github/workflows/checks.yml)
 
 - 代码结构见 [架构](docs/ARCHITECTURE.md)，维护发现见 [1.4 源码审查](docs/CODE-REVIEW.md)。
 - 功能目标与开源参考见 [产品需求与路线图](docs/PRODUCT-ROADMAP.md)。

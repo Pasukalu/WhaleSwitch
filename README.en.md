@@ -8,7 +8,7 @@
 
 [简体中文](README.md) · [Download](https://github.com/Pasukalu/WhaleSwitch/releases) · [Code review](docs/CODE-REVIEW.md) · [Changelog](CHANGELOG.md)
 
-Inspect each CLI's user-level edit target, review changes, save reusable profiles, and restore previous files from encrypted snapshots. The desktop app supports English and Simplified Chinese, plus dark, light, and system themes.
+Inspect each CLI's user-level edit target, review changes across tools, and restore previous files from encrypted snapshots. The desktop app supports English and Simplified Chinese, plus dark, light, and system themes.
 
 ## Install
 
@@ -31,6 +31,12 @@ Public prerelease installers are unsigned. Release notes list the verification c
 3. Save a reusable profile and export it as JSON. To undo specific edits, choose **Snapshots → Restore fields**, review the diff, and select the fields to restore.
 4. Returning to the window or scanning again checks for external edits. When you have a draft, compare the previous, current, and draft values. For the same readable file, choose which conflicting fields to carry into a new draft, then review again before saving.
 
+### Switch settings across tools
+
+1. Save the settings you use for each tool in **Profiles**. In **Plans**, select up to three tool profiles and save the plan, or import a plan JSON.
+2. Choose **Preview plan** and check each local target path. Select the fields to apply and opt in to any removals. Preview again if a file changes.
+3. Choose **Apply selected fields**. WhaleSwitch verifies an encrypted backup of every selected existing file before replacing the first file. Use **Recent runs** to check per-tool results and available recovery snapshots after a failure or interruption.
+
 ## Supported configuration
 
 | CLI | User-level file | Editable settings |
@@ -46,29 +52,30 @@ For OpenCode V1, WhaleSwitch also supports an absolute JSON or JSONC path in `OP
 | Config sources | Displays the edit target, path environment flags and read-only candidate files in a selected project. |
 | Project skills | Lists candidate tools, matching folder names and fingerprints for `SKILL.md` under documented project folders. |
 | Profiles | Saves, renames, duplicates and transfers portable profiles. Applying a profile lets you select individual fields, with removals starting unchecked. |
+| Plans | Saves or imports a combination of tool settings, reviews and applies selected fields, and links each run to available backups. |
 | Snapshots | Captures and compares snapshots at the original tool and path. Restore selected fields, or restore a full file to recover from invalid syntax. |
 | Connection test | Requests a model list from an explicitly selected OpenAI-compatible or Anthropic endpoint. Keyless OpenAI-compatible probes are limited to loopback targets. |
 
 ## Local storage
 
-Snapshot contents are encrypted in SQLite with a key held in the operating system credential store. Provider-issued connection keys use the same OS store, scoped to a tool, protocol and request URL. Profile exports contain the validated settings, including explicit unset values. Project reports list recognized setting names and file status. The diagnostic request returns a status, elapsed time and model count. [Architecture and security](docs/ARCHITECTURE.md)
+Snapshot contents are encrypted in SQLite with a key held in the operating system credential store. Provider-issued connection keys use the same OS store, scoped to a tool, protocol and request URL. Profile and plan exports contain validated settings, including explicit unset values. Local target paths and snapshot history stay on the device. Project reports list recognized setting names and file status. The diagnostic request returns a status, elapsed time and model count. [Architecture and security](docs/ARCHITECTURE.md)
 
 ## Develop
 
 Install Node.js 22.13+, npm, stable Rust and the platform dependencies. [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ```sh
-npm install
+npm ci
 npm run tauri dev
 npm run typecheck
 npm test
-cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
-npm run tauri build
+cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features
+npm run tauri build -- -- --locked
 ```
 
 `npm run dev` serves a browser demo with simulated data. The desktop app runs native file, snapshot, and credential operations.
 
-CI checks the frontend and Rust core, builds four desktop installers and a Windows portable ZIP, and generates their SHA-256 files. The release job verifies the complete asset set against the matching app version. [Workflow](.github/workflows/checks.yml)
+CI uses the npm and Cargo lockfiles to check the frontend and Rust core, builds four desktop installers and a Windows portable ZIP, and generates their SHA-256 files. The Windows job extracts and launches the portable package. The release job verifies the complete asset set against the matching app version. [Workflow](.github/workflows/checks.yml)
 
 [Architecture](docs/ARCHITECTURE.md) · [Code review](docs/CODE-REVIEW.md) · [Product roadmap](docs/PRODUCT-ROADMAP.md) · [MIT License](LICENSE)
 

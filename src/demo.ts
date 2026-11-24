@@ -1,5 +1,5 @@
 import { FIELD_ORDER, TOOLS } from "./domain.ts";
-import type { Change, ConfigInspection, Fields, Profile, Snapshot, Target, Tool, View } from "./domain.ts";
+import type { Change, ConfigInspection, ConfigPlan, Fields, PlanFileResult, PlanPreview, PlanProfile, PlanRun, PlanSelection, Profile, Snapshot, Target, Tool, View } from "./domain.ts";
 
 const views: Record<Tool, View> = {
   codex: { tool: "codex", path: "~/.codex/config.toml", format: "toml", exists: true, issue: null, revision: "4e71bb19", fields: {
@@ -12,6 +12,8 @@ const views: Record<Tool, View> = {
 type DemoSnapshot = Snapshot & { view: View };
 const history: Record<Tool, DemoSnapshot[]> = { codex: [], claude: [], opencode: [] };
 const profiles: Record<Tool, Profile[]> = { codex: [], claude: [], opencode: [] };
+let plans: ConfigPlan[] = [];
+const planRuns: PlanRun[] = [];
 let version = 1000;
 
 function changes(current: Fields, next: Fields): Change[] {
@@ -34,10 +36,18 @@ function save(view: View, patch: Fields, reason: Snapshot["reason"] = "before_sa
   return saved;
 }
 
-function profileName(tool: Tool, input: unknown, excluding?: number) {
+function draftName(input: unknown, error: string) {
   const name = typeof input === "string" ? input.trim() : "";
-  if (!name || [...name].length > 64 || /[\p{Cc}]|sk[-_]|ghp_|github_pat_|xoxb-|sess-|eyjhb/iu.test(name)) throw "invalid_profile_name";
-  const asciiLower = (value: string) => value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+  if (!name || [...name].length > 64 || /[\p{Cc}]|sk[-_]|ghp_|github_pat_|xoxb-|sess-|eyjhb/iu.test(name)) throw error;
+  return name;
+}
+
+function asciiLower(value: string) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+function profileName(tool: Tool, input: unknown, excluding?: number) {
+  const name = draftName(input, "invalid_profile_name");
   if (profiles[tool].some((item) => item.id !== excluding && asciiLower(item.name) === asciiLower(name))) throw "profile_name_exists";
   return name;
 }
@@ -50,6 +60,7 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
   const patch = args.patch as Fields | undefined;
   const selected = history[tool].find((snapshot) => snapshot.id === args.id);
   const profile = profiles[tool].find((entry) => entry.id === args.id);
+  const plan = plans.find((entry) => entry.id === args.id);
   let result: unknown;
   switch (command) {
     case "discover":
@@ -100,6 +111,58 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       if (!profile) throw "profile_missing";
       profiles[tool] = profiles[tool].filter(({ id }) => id !== profile.id);
       break;
+    case "plans": result = plans; break;
+    case "plan_runs": result = planRuns; break;
+    case "create_plan": {
+      const name = draftName(args.name, "invalid_plan");
+      const sources = args.profiles as PlanProfile[] | undefined;
+      if (!sources?.length || sources.length !== new Set(sources.map((source) => source.tool)).size) throw "invalid_plan";
+      if (plans.some((item) => asciiLower(item.name) === asciiLower(name))) throw "plan_name_exists";
+      const entries = sources.map((source) => {
+        const chosen = profiles[source.tool]?.find((entry) => entry.id === source.profile_id);
+        if (!chosen) throw "profile_missing";
+        return { tool: source.tool, fields: { ...chosen.fields } };
+      });
+      const created = { id: ++version, name, timestamp: Date.now(), entries };
+      plans.unshift(created);
+      result = created;
+      break;
+    }
+    case "delete_plan":
+      if (!plan) throw "plan_missing";
+      plans = plans.filter(({ id }) => id !== plan.id);
+      break;
+    case "preview_plan":
+      if (!plan) throw "plan_missing";
+      result = plan.entries.map((entry): PlanPreview => {
+        const live = views[entry.tool];
+        return { tool: live.tool, path: live.path, revision: live.revision, changes: changes(live.fields, entry.fields), issue: null };
+      });
+      break;
+    case "apply_plan": {
+      if (!plan) throw "plan_missing";
+      const selections = args.selections as PlanSelection[] | undefined;
+      if (!selections?.length || selections.length !== new Set(selections.map((selection) => selection.tool)).size) throw "invalid_plan";
+      for (const selection of selections) {
+        const live = views[selection.tool];
+        const entry = plan.entries.find((candidate) => candidate.tool === selection.tool);
+        if (!entry || !Object.keys(selection.fields).length) throw "invalid_plan";
+        const pending = changes(live.fields, entry.fields);
+        if (live.path !== selection.path || live.revision !== selection.revision ||
+          Object.entries(selection.fields).some(([field, value]) => !pending.some((change) => change.field === field && change.after === value))) {
+          throw "conflict";
+        }
+      }
+      const files = selections.map((selection): PlanFileResult => {
+        const live = views[selection.tool];
+        save(live, selection.fields, "before_plan");
+        return { tool: live.tool, status: "applied", snapshot_id: live.exists ? history[live.tool][0]?.id ?? null : null, issue: null };
+      });
+      const run: PlanRun = { id: ++version, name: plan.name, timestamp: Date.now(), finished: true, files };
+      planRuns.unshift(run);
+      result = run;
+      break;
+    }
     case "snapshot":
       if (!view.exists) throw "snapshot_missing";
       result = add(view, "manual");

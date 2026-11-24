@@ -95,7 +95,7 @@ impl Storage {
     }
 }
 
-fn validate_name(name: &str) -> Result<&str> {
+pub(crate) fn validate_name(name: &str) -> Result<&str> {
     let name = name.trim();
     let lower = name.to_ascii_lowercase();
     if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control)

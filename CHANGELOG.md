@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+- Combine up to three tool profiles into a named configuration plan. Import and export plans as JSON independently of their original profiles.
+- Review each target path and select fields across tools. Keep field removals unchecked initially and reject stale or overlapping targets before writing.
+- Verify all encrypted backups before the first file replacement. Attempt to restore files already written if a later step fails and show each file's outcome and recovery snapshot.
+- Record interrupted plan runs locally and inspect the current file revisions on reopening.
+- Lock npm and Rust dependency resolution and launch the Windows portable ZIP during CI.
+
 ## 1.5.0
 
 - Restore selected fields from snapshots for Codex CLI, Claude Code, and OpenCode. Changes outside the selection stay in the current file.

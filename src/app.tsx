@@ -9,16 +9,17 @@ import { ConfigDriftPanel } from "./components/config-drift";
 import { ConfigSources } from "./components/config-sources";
 import { Connection } from "./components/connection";
 import { DiffDialog } from "./components/diff-dialog";
+import { Plans } from "./components/plans";
 import { Profiles, type ProfileEdit } from "./components/profiles";
 import { ProjectSkills } from "./components/project-skills";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { acceptConfig, describeDrift, emptyConfigSession, mergeDraft, observeConfig, observedIssue, observedPath, observedView } from "./config-session";
-import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultChangeSelection, fieldPatch, fieldPath, selectedChangePatch, sameTarget, targetOf, type Change, type ConfigInspection, type Field, type Fields, type Profile, type ProfileArchive, type ProjectConfigReport, type RuntimeInfo, type Snapshot, type Target, type Tool, type ToolInfo, type View } from "./domain";
+import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultChangeSelection, fieldPatch, fieldPath, selectedChangePatch, sameTarget, targetOf, type Change, type ConfigInspection, type Field, type Fields, type PlanRun, type PlanSelection, type Profile, type ProfileArchive, type ProjectConfigReport, type RuntimeInfo, type Snapshot, type Target, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
-type Tab = "config" | "sources" | "profiles" | "snapshots" | "skills" | "connectivity" | "settings";
+type Tab = "config" | "sources" | "profiles" | "plans" | "snapshots" | "skills" | "connectivity" | "settings";
 type Theme = "dark" | "light" | "system";
 type Review = { target: Target } & ({ kind: "save"; changes: Change[]; patch: Fields }
   | { kind: "restore" | "compare"; changes: Change[]; id: number }
@@ -28,7 +29,7 @@ type Notice = { message: string; error: boolean };
 
 const TOOL_ICON = { codex: Terminal, claude: Cloud, opencode: CodeXml };
 const TABS = [{ id: "config", icon: FileCode2 }, { id: "sources", icon: FolderTree }, { id: "profiles", icon: Bookmark },
-  { id: "snapshots", icon: History }, { id: "skills", icon: BookOpen }, { id: "connectivity", icon: Activity }] as const;
+  { id: "plans", icon: Layers }, { id: "snapshots", icon: History }, { id: "skills", icon: BookOpen }, { id: "connectivity", icon: Activity }] as const;
 const RECHECK_ERRORS = new Set([
   "conflict", "path_unavailable", "ambiguous_config", "unsafe_path", "file_too_large",
   "invalid_config", "io", "recovery_required",
@@ -76,10 +77,12 @@ export function App() {
   const [session, setSession] = useState(emptyConfigSession);
   const [projectConfig, setProjectConfig] = useState<ProjectConfigReport | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [snapshotFocus, setSnapshotFocus] = useState<number | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [historyProblem, setHistoryProblem] = useState<unknown>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [profilesProblem, setProfilesProblem] = useState<unknown>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -185,12 +188,23 @@ export function App() {
     let active = true;
     setSnapshots([]);
     setHistoryProblem(null);
+    setHistoryLoading(viewPath !== undefined);
     if (viewPath !== undefined) {
-      void api.snapshots(tool, viewPath).then((value) => { if (active) setSnapshots(value); },
-        (error) => { if (active) setHistoryProblem(error); });
+      void api.snapshots(tool, viewPath).then((value) => {
+        if (active) { setSnapshots(value); setHistoryLoading(false); }
+      }, (error) => {
+        if (active) { setHistoryProblem(error); setHistoryLoading(false); }
+      });
     }
     return () => { active = false; };
   }, [tool, viewPath, refresh]);
+
+  useEffect(() => {
+    if (tab !== "snapshots" || snapshotFocus === null || historyLoading) return;
+    const row = document.getElementById(`snapshot-${snapshotFocus}`);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: "nearest" });
+  }, [tab, snapshotFocus, snapshots, historyLoading]);
 
   useEffect(() => {
     let active = true;
@@ -232,7 +246,7 @@ export function App() {
     catch (error) { setHistoryProblem(error); }
   }
 
-  function choose(next: Tool) {
+  function choose(next: Tool, destination: Tab = tab === "sources" ? "sources" : "config", snapshot: number | null = null) {
     if (next !== tool && dirty && !window.confirm(t.discard)) return;
     if (next !== tool) {
       inspectionInFlight.current = null;
@@ -244,13 +258,26 @@ export function App() {
       setNotice(null);
     }
     setTool(next);
-    if (tab !== "sources") setTab("config");
+    setSnapshotFocus(snapshot);
+    setTab(destination);
   }
 
   function reload() {
     setNotice(null);
     checkConfig();
     setRefresh((previous) => previous + 1);
+  }
+
+  async function applyConfigPlan(id: number, selections: PlanSelection[]): Promise<PlanRun | null> {
+    let result: PlanRun | null = null;
+    await run(async () => {
+      if (dirty && selections.some((selection) => selection.tool === tool) && !window.confirm(t.planDraftHint)) return;
+      result = await api.applyPlan(id, selections);
+      setReview(null);
+      focusAfterTask.current = true;
+      setRefresh((previous) => previous + 1);
+    });
+    return result;
   }
 
   function updateDraft(update: (previous: Fields) => Fields) {
@@ -402,7 +429,7 @@ export function App() {
 
     <main className="workspace">
       <header className="topbar">
-        <div className="breadcrumbs"><Boxes size={15}/><span>{t.workspace}</span><ChevronRight size={14}/><strong>{tab === "settings" ? t.settings : TOOL_NAMES[tool]}</strong></div>
+        <div className="breadcrumbs"><Boxes size={15}/><span>{t.workspace}</span><ChevronRight size={14}/><strong>{tab === "settings" || tab === "plans" ? t[tab] : TOOL_NAMES[tool]}</strong></div>
         <div className="top-actions">
           <Button variant="ghost" size="icon" aria-label={t.language} title={t.language} onClick={() => setLanguage(language === "zh" ? "en" : "zh")}><Languages/></Button>
           <Button variant="ghost" size="icon" aria-label={t.appearance} title={t.appearance} onClick={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>{theme === "light" ? <Sun/> : <Moon/>}</Button>
@@ -438,7 +465,7 @@ export function App() {
           <section className="hero" aria-labelledby="workspace-title">
             <div className="hero-grid"/>
             <div className="hero-text"><div className="hero-status"><span className={`dot ${view?.exists && !view.issue && !drift ? "live" : ""}`}/>{loading ? t.loading : drift ? t.driftTitle : baselineIssue ? t.unavailable : view?.exists ? t.ready : t.noFile}</div>
-              <h1 id="workspace-title">{TOOL_NAMES[tool]}</h1><p>{t.intro}</p>
+              <h1 id="workspace-title">{tab === "plans" ? t.plans : TOOL_NAMES[tool]}</h1><p>{tab === "plans" ? t.plansIntro : t.intro}</p>
             </div>
             <div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="art-glow"/>
               <img src="/whale.png" alt={t.mascot} draggable={false} onError={(event) => { event.currentTarget.hidden = true; }}/>
@@ -469,6 +496,8 @@ export function App() {
                 : tab === "sources" ? <ConfigSources t={t} language={language} tool={tool} inspection={session.latest}
                   report={projectConfig} busy={controlsBusy} native={!previewMode}
                   onPick={() => void run(async () => { setProjectConfig(await api.pickProjectConfig()); })}/>
+                : tab === "plans" ? <Plans t={t} language={language} busy={controlsBusy} native={!previewMode}
+                  onTask={run} onApply={applyConfigPlan} onOpenBackup={(target, id) => choose(target, "snapshots", id)}/>
                 : loading ? <section className="panel"><Empty icon={<RefreshCw size={22}/>} title={t.loading} subtitle={t.data}/></section>
                 : tab === "profiles" ? <Profiles key={tool} t={t} language={language} profiles={profiles}
                   available={Boolean(view && !view.issue && !drift)} dirty={dirty} busy={controlsBusy} loading={profilesLoading}
@@ -481,9 +510,13 @@ export function App() {
                   <div className="panel-head spread"><div className="head-label"><div className="section-icon"><History size={19}/></div><div><h2>{t.snapshots}</h2><p>{t.safeStorage}</p></div></div>
                     <Button variant="outline" size="sm" disabled={configLocked || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>
                   </div>
-                  {historyProblem ? <div className="panel-body"><div className="inline-message error" role="alert"><CircleAlert size={17}/>{errorText(historyProblem, language)}</div></div>
+                  {snapshotFocus !== null && !historyLoading && !historyProblem && !snapshots.some(({ id }) => id === snapshotFocus) &&
+                    <div className="panel-body"><p className="inline-message" role="status">{t.planSnapshotUnavailable} #{snapshotFocus}</p></div>}
+                  {historyLoading ? <div className="panel-body small muted" role="status">{t.loading}</div>
+                    : historyProblem ? <div className="panel-body"><div className="inline-message error" role="alert"><CircleAlert size={17}/>{errorText(historyProblem, language)}</div></div>
                     : snapshots.length === 0 ? <Empty icon={<Layers size={23}/>} title={t.noSnapshots} subtitle={t.snapHint}/>
-                    : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-row" key={snapshot.id}>
+                    : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-row" key={snapshot.id}
+                      id={`snapshot-${snapshot.id}`} tabIndex={snapshot.id === snapshotFocus ? -1 : undefined}>
                       <div className="snapshot-icon"><Layers size={18}/></div><div className="snapshot-text"><strong>{t[snapshot.reason]}</strong><small>{date(snapshot, language)} · #{snapshot.id}</small></div>
                       <div className="row-actions snapshot-actions">
                         <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
