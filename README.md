@@ -1,117 +1,98 @@
 # WhaleSwitch
 
-[![Desktop builds](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml)
+![WhaleSwitch 和小鲸鱼领航员。AI 编程工具的本地配置工作台](docs/assets/whaleswitch-banner.jpg)
 
-**AI 编程工具的本地配置工作台 / Local configuration workbench for AI coding CLIs**
+[![桌面构建](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml)
 
-在同一个桌面应用里管理 Codex CLI、Claude Code 和 OpenCode。保存常用配置档案，预览每一项改动，并在覆盖配置时自动留下加密快照。
+**管理 Codex CLI、Claude Code 和 OpenCode 的本地配置。**
 
-Manage Codex CLI, Claude Code, and OpenCode from one desktop app. Save reusable profiles, review field-level changes, and recover previous configs from encrypted snapshots.
+[English](README.en.md) · [下载安装包](https://github.com/Pasukalu/WhaleSwitch/releases) · [源码审查](docs/CODE-REVIEW.md) · [更新日志](CHANGELOG.md)
 
-[快速开始 / Quick start](#quick-start) · [支持字段 / Supported settings](#supported-settings) · [更新日志 / Changelog](CHANGELOG.md) · [架构与安全 / Architecture](docs/ARCHITECTURE.md)
+WhaleSwitch 用于查清配置从哪里读入、比较改动、复用常用设置以及恢复历史版本。支持简体中文和 English，外观可选择深色、浅色或跟随系统。
 
-## Quick start
+## 安装
 
-[产品需求与路线图 / Product requirements and roadmap](docs/PRODUCT-ROADMAP.md)
+在 [GitHub Releases](https://github.com/Pasukalu/WhaleSwitch/releases) 选择版本和平台，同时下载同名的 `.sha256` 文件。持续构建的包也可在 [GitHub Actions](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml) 的 Artifacts 中下载。
 
-1. 从源码运行，或在安装包发布后从仓库的 **Releases** 下载。构建流程覆盖 Windows x64（NSIS）、macOS Apple Silicon 和 Intel（DMG）、Ubuntu x64（DEB）。
-2. 打开 WhaleSwitch 并扫描工具。侧栏显示 PATH 检测结果，配置页显示实际文件路径。已有配置可直接管理。
-3. 修改字段后选择 **查看差异**。也可在 **配置档案** 保存当前配置或草稿，随后比较并应用。
-4. 若需撤销修改，到 **快照** 比较并恢复完整历史文件。若当前文件无法解析，也可以从有效快照恢复。
-
-Open the app, scan for tools, and review the resolved config path. Change fields or capture a named profile, then review the diff before applying. Rename or duplicate a profile from its row in **Profiles**. The Snapshots tab can restore a previous full file even if the current file is malformed.
-
-## Supported settings
-
-| Tool | User-level file | Editable settings |
+| 系统 | 选择的安装包 | 使用方式 |
 | --- | --- | --- |
-| Codex CLI | `$CODEX_HOME/config.toml` or `~/.codex/config.toml` | `model`, `model_provider`, `openai_base_url`, `model_reasoning_effort`, `model_reasoning_summary`, `model_verbosity` |
-| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json` | `model`, `env.ANTHROPIC_BASE_URL` |
-| OpenCode V1/V2 | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` or `~/.config/opencode/opencode.json(c)` | `model` (`provider/model`), `default_agent` |
+| Windows x64 | `*-windows-x64.exe` | 运行 NSIS 安装程序，再从开始菜单启动。 |
+| macOS Apple Silicon | `*-macos-arm64.dmg` | 挂载 DMG，将 WhaleSwitch 拖到 Applications。 |
+| macOS Intel | `*-macos-x64.dmg` | 挂载 DMG，将 WhaleSwitch 拖到 Applications。 |
+| Ubuntu x64 | `*-linux-x64.deb` | 用软件安装器打开，或在下载目录用 `sudo apt install` 安装选定的 `.deb`。 |
 
-For OpenCode V1 setups, WhaleSwitch also recognizes an absolute JSON or JSONC path in `OPENCODE_CONFIG`. Ambiguous file candidates, inline configs and custom-directory overrides stop file selection. Project configuration, terminal overrides, and organization policies can take precedence over the edited user file.
+公开预发行包为未签名构建。发布页记录各版本的测试范围。Linux 的密钥库操作需要桌面会话中的 Secret Service 可用并解锁。
 
-The field list follows the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference), [Claude Code settings](https://code.claude.com/docs/en/settings), [Claude Code environment variables](https://code.claude.com/docs/en/env-vars), and [OpenCode V1 migration guide](https://opencode.ai/docs/migrate-v1/). OpenCode's V1 and V2 provider blocks use different schemas. WhaleSwitch edits the shared fields listed here and preserves those provider blocks.
+<details>
+<summary>校验安装包 SHA-256</summary>
 
-## Config sources and external edits / 配置来源与外部变更
+在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
-打开 **配置来源**，即可看到所选 CLI 的用户级编辑目标、相关路径环境变量是否已设置，以及可能影响会话的启动参数。选择一个项目目录后，可以查看候选文件的状态和已识别字段名。项目盘点为只读，实际生效值由 CLI 决定。
+```powershell
+Get-FileHash .\WhaleSwitch-1.4.0-windows-x64.exe -Algorithm SHA256
+```
 
-In **Config sources**, check the resolved user-level edit target and which path environment variables are set in the WhaleSwitch process. Choose a project folder to list file status and recognized field names for these read-only candidates.
+```sh
+# macOS Apple Silicon
+shasum -a 256 -c WhaleSwitch-1.4.0-macos-arm64.dmg.sha256
 
-| CLI | Project-relative candidates |
+# Ubuntu
+sha256sum -c WhaleSwitch-1.4.0-linux-x64.deb.sha256
+```
+
+</details>
+
+## 第一次使用
+
+1. **确认目标。** 打开应用，选择一个 CLI。`扫描工具` 检查 PATH，**配置来源** 显示实际的用户级编辑路径。PATH 中找不到工具时，仍可查看已存在并受支持的配置文件。
+2. **编辑和预览。** 在 **配置** 修改已支持的字段，选择 **查看差异** 并确认。已有文件会先创建加密快照，再执行修订校验和原子替换。
+3. **复用或恢复。** 在 **配置档案** 保存和导入日常设置，应用时选择字段。**快照** 能比较并恢复原工具与路径的完整历史文件。
+4. **处理外部改动。** 切回窗口或手动扫描后，有草稿时会列出旧值、文件当前值和草稿。同一路径下可逐项合并，随后重新预览提交。
+
+## 工具与配置范围
+
+| 工具 | 用户级文件 | 可编辑字段 |
+| --- | --- | --- |
+| Codex CLI | `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` | `model`、`model_provider`、`openai_base_url`、`model_reasoning_effort`、`model_reasoning_summary`、`model_verbosity` |
+| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` 或 `~/.claude/settings.json` | `model`、`env.ANTHROPIC_BASE_URL` |
+| OpenCode V1/V2 | `$XDG_CONFIG_HOME/opencode/opencode.json(c)` 或 `~/.config/opencode/opencode.json(c)` | `model`（`provider/model`）和 `default_agent` |
+
+OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存在内联配置、自定义目录或多个全局候选文件时，应用暂停定位可写目标。工作目录、启动参数、信任设置和组织策略可能影响 CLI 的实际生效值。 [Codex 配置](https://learn.chatgpt.com/docs/config-file/config-reference) · [Claude Code 设置](https://code.claude.com/docs/en/settings) · [OpenCode 配置](https://opencode.ai/docs/config/)
+
+| 页面 | 可执行的操作 |
 | --- | --- |
-| Codex CLI | `.codex/config.toml` |
-| Claude Code | `.claude/settings.json`, `.claude/settings.local.json` |
-| OpenCode | `opencode.json`, `opencode.jsonc`, `.opencode/opencode.json`, `.opencode/opencode.jsonc` |
+| 配置来源 | 查看编辑目标、相关环境变量设置状态和项目配置候选文件。项目读取为只读，仅返回状态与支持字段名。 |
+| 项目技能 | 选择项目目录，检查 `.agents/skills`、`.claude/skills` 和 `.opencode/skills` 的 `SKILL.md`，查看候选 CLI、同名目录与文件指纹。 |
+| 配置档案 | 保存、重命名、复制、导出和导入档案。应用前预览差异，带清除动作的字段初始不勾选。 |
+| 快照 | 手动创建、比较和完整恢复快照。配置语法损坏时，可从可用快照恢复。 |
+| 连接测试 | 对 OpenAI 兼容或 Anthropic 端点发起模型列表请求，显示状态、耗时和模型数。OpenAI 兼容的回环服务可使用无密钥模式。 |
 
-切回 WhaleSwitch 或点击 **扫描工具** 时，应用会检查所选 CLI 的用户级配置。若有未保存修改，会保留草稿并显示旧值、当前文件值和草稿。对同一文件，选择 **合并到草稿** 可保留不冲突的修改。冲突字段默认采用文件值，可勾选保留草稿值。若目标换成另一个文件或当前文件无法读取，可先保留草稿并重新检查，也可主动放弃草稿并载入当前状态。
+## 数据与密钥
 
-Returning to the window or scanning again checks the selected CLI's user-level file. A clean editor loads the latest state. With unsaved edits, review the previous, current, and draft values. **Merge into draft** carries independent edits forward and lets you choose a draft value for each conflicting field. Merging changes the editor state. Saving requires a fresh preview and uses the revision-checked encrypted backup flow.
+- 快照以加密形式存入本地 SQLite，快照密钥和连接测试 API 密钥保存在操作系统安全存储中。已有配置需要通过加密备份校验后才会写入。
+- 配置档案的 JSON 仅包含工具、名称与支持字段，保留显式清除值。换设备时可导入档案，再勾选需要迁移的字段。
+- 连接测试使用服务商签发的 API 密钥，仅在手动触发时发送请求。密钥按工具、协议及具体请求 URL 隔离，重定向与系统代理继承均已禁用。
+- 项目盘点读取固定候选文件及技能清单。结果取决于所选目录，连接凭据、登录会话和项目脚本不参与盘点。 [架构与安全](docs/ARCHITECTURE.md)
 
-## Profile, snapshot and archive behavior
+## 开发与贡献
 
-| Action | Effect |
-| --- | --- |
-| Save profile | Stores validated fields for the selected tool in SQLite, including defaults captured as unset. |
-| Rename or duplicate | Rename keeps the same profile and captured values. Duplicate creates a separate profile from its saved fields. Both actions update the saved profile list. |
-| Export or import a profile | Moves a saved profile as JSON for the same tool. Explicitly unset fields are preserved. Choose a name before saving the imported profile. |
-| Apply profile | Choose changes in the field diff and write the selected values through the revision-checked backup flow. Removals start unchecked. |
-| Restore snapshot | Restores the full original bytes at the same tool and path. An existing file is backed up first. |
-| Export or import active settings | Exports allowlisted configured values as JSON. Import stages an overlay for review. |
-
-档案只包含支持字段，工具的原生登录仍由对应 CLI 管理。快照保存完整原文，因此使用系统密钥库中的专用密钥加密。密钥库不可用时，应用会拒绝覆盖已有配置。读取、保存与还原流程详见 [架构与安全](docs/ARCHITECTURE.md)。
-
-在 **配置档案** 中，可以重命名档案，或将已保存的字段复制到新档案。操作只影响档案列表，明确应用并确认差异后才会写入工具配置。
-
-### Move a profile between devices
-
-1. Open **Profiles** and export the saved profile from its row.
-2. On the other device, select the same CLI, then choose **Import profile** in **Profiles**.
-3. Review the name and save the import. If the name is already taken, choose another. Use **Review changes** on the imported profile, select the fields to write, then choose **Apply selected fields**.
-
-档案 JSON 只包含工具类型、档案名称和支持的配置字段。显式清除的字段也会迁移。API 密钥、原始配置文件和加密快照由本机独立存储。
-
-例如，从另一台设备导入 Codex 档案后，可以只勾选模型和推理强度，保留本机的 API 地址。确实需要清除一项配置时，再勾选带有「清除该字段」标记的差异。
-
-## Connection tests
-
-- OpenAI-compatible and Anthropic APIs are tested with a Models request. Use an API key issued by the provider. The app stores it in Windows Credential Manager, macOS Keychain, or Linux Secret Service, scoped to the tool, API protocol and request URL.
-- Keyless OpenAI-compatible probes are available for loopback services such as Ollama or LM Studio. The default is `http://127.0.0.1:11434/v1`; change the port or path as needed.
-- Tests report response category, status, elapsed time and model count. They do not send a prompt. Automatic redirects and proxy inheritance are disabled.
-
-## Project skills / 项目技能
-
-在桌面应用打开 **项目技能 → 选择项目目录**，即可按目录位置查看 Codex CLI、Claude Code 和 OpenCode 可能发现的技能。同名提示比较技能文件夹名，SHA-256 指纹可用于核对 `SKILL.md` 的内容是否一致。盘点只读，选定路径和扫描结果仅在面板中临时显示。
-
-Open **Project skills → Choose project folder** to check skill manifests in the selected folder. WhaleSwitch lists relative paths, CLI discovery candidates, manifest fingerprints, and matching folder names across shared CLIs.
-
-| Project-relative source | CLI discovery candidates |
-| --- | --- |
-| `.agents/skills/<folder>/SKILL.md` | Codex CLI, OpenCode |
-| `.claude/skills/<folder>/SKILL.md` | Claude Code, OpenCode |
-| `.opencode/skills/<folder>/SKILL.md` | OpenCode |
-
-The scan checks direct subfolders, with a limit of 256 entries per source and 128 KiB per manifest. It skips links, Windows reparse points, and unreadable or non-UTF-8 manifests. CLI runtime results can differ based on working directory, personal skills, CLI settings, or tool version. See the [product requirements](docs/PRODUCT-ROADMAP.md#13-项目技能盘点已实现) for the exact scope and sources.
-
-## Develop and build
-
-Install Node.js 22.13+, npm, stable Rust, and the [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/). On Linux, unlock the running Secret Service for native credential operations. On Windows, install C++ Build Tools and WebView2.
+需要 Node.js 22.13+、npm、stable Rust 和 Tauri 2 平台依赖。 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)
 
 ```sh
 npm install
 npm run tauri dev
+npm run typecheck
 npm test
 cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
 npm run tauri build
 ```
 
-`npm run dev` serves a browser preview at `http://localhost:1420`. It uses simulated configuration data in memory. Desktop filesystem writes and credential operations require Tauri.
+`npm run dev` 启动使用模拟数据的浏览器预览。实际目录扫描、加密快照和密钥库操作在桌面版内验证。
 
-GitHub Actions runs frontend and Rust tests and packages each target. Installers from successful runs are available in **Artifacts** on the [desktop builds page](https://github.com/Pasukalu/WhaleSwitch/actions/workflows/checks.yml). Each installer is paired with a SHA-256 file. A version-matching tag creates a draft release after all matrix builds succeed. The current packaging setup produces unsigned installers. Before publishing the draft, install and open the bundles, then verify the OS keyring and a save-and-restore cycle with disposable config files.
+CI 在 Windows x64、macOS Apple Silicon、macOS Intel 和 Ubuntu x64 上运行类型检查、前端与 Rust 测试，然后生成安装包和校验文件。维护者可用匹配版本的标签生成发布草稿，或从 `main` 上的提交推送 `release/vX.Y.Z` 分支发布预发行包。发布任务校验版本以及四组安装包与校验文件，再上传到 Releases。 [构建工作流](.github/workflows/checks.yml)
 
-## Project references and license
+- 代码结构、已核对的边界与待办见 [源码审查](docs/CODE-REVIEW.md)。
+- 功能目标与开源参考见 [产品需求与路线图](docs/PRODUCT-ROADMAP.md)。
+- 反馈时可提供系统、架构、应用版本及错误类型。请在提交前去除密钥和机器路径。 [提交问题](https://github.com/Pasukalu/WhaleSwitch/issues/new)
 
-- CC Switch's live writer delegates provider-specific updates to tool-specific patch paths. [CC Switch live configuration code](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/services/provider/live.rs)
-- CCS stores account-profile metadata in its registry and dispatches Claude through a platform-aware CLI adapter. [CCS profile registry](https://github.com/kaitranntt/ccs/blob/main/src/auth/profile-registry.ts) · [CCS Claude adapter](https://github.com/kaitranntt/ccs/blob/main/src/targets/claude-adapter.ts)
-- WhaleSwitch focuses on reusing settings across devices with field selection before writing and a local recovery snapshot. [MIT License](LICENSE)
+WhaleSwitch 是独立的开源项目，横幅使用项目的原创鲸鱼娘吉祥物。 [MIT License](LICENSE)

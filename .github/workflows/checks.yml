@@ -45,7 +45,9 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Frontend tests
-        run: npm test
+        run: |
+          npm run typecheck
+          npm test
       - name: Core unit and integration tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
       - name: Build desktop installer
@@ -60,8 +62,10 @@ jobs:
           path: release-assets/*
 
   release:
-    name: Prepare draft release
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    name: Prepare release installers
+    if: >-
+      github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v'))
     needs: desktop
     runs-on: ubuntu-latest
     permissions:
@@ -72,16 +76,55 @@ jobs:
         with:
           node-version: 22
       - name: Check release version
+        id: version
         shell: bash
         run: |
-          node --input-type=commonjs -e 'const fs=require("node:fs"); const tag=process.env.GITHUB_REF_NAME; const pkg=require("./package.json"); const tauri=require("./src-tauri/tauri.conf.json"); const cargo=fs.readFileSync("./src-tauri/Cargo.toml","utf8").match(/^version = "([^"]+)"$/m)?.[1]; if (tag !== "v"+pkg.version || pkg.version !== tauri.version || pkg.version !== cargo || !/^v\d+\.\d+\.\d+$/.test(tag)) process.exit(1);'
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const tag = process.env.GITHUB_REF_NAME.replace(/^release\//, "");
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const tauri = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+          const cargo = readFileSync("src-tauri/Cargo.toml", "utf8").match(/^version = "([^"]+)"$/m)?.[1];
+          if (!/^v\d+\.\d+\.\d+$/.test(tag) || tag !== "v" + pkg.version || pkg.version !== tauri.version || pkg.version !== cargo) {
+            throw new Error("The release ref must match the npm, Tauri and Rust versions");
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, "tag=" + tag + "\n");
+          JS
       - uses: actions/download-artifact@v4
         with:
           pattern: WhaleSwitch-*
           path: release-assets
           merge-multiple: true
-      - name: Create draft with installers and checksums
+      - name: Verify all installers and checksums
+        run: node scripts/stage-installers.mjs --verify
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --draft --generate-notes --title "WhaleSwitch $GITHUB_REF_NAME"
+          options=(--title "WhaleSwitch $RELEASE_TAG")
+          notes="docs/releases/$RELEASE_TAG.md"
+          if [[ -f "$notes" ]]; then
+            options+=(--notes-file "$notes")
+          else
+            options+=(--generate-notes)
+          fi
+
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            options+=(--verify-tag --draft)
+          else
+            comparison=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...main" --jq '.status')
+            if [[ "$comparison" != identical && "$comparison" != ahead ]]; then
+              echo "::error::A release branch must point to a commit already on main."
+              exit 1
+            fi
+            tag=$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")
+            if [[ -n "$tag" ]]; then
+              echo "::error::The release tag already exists."
+              exit 1
+            fi
+            options+=(--target "$GITHUB_SHA" --prerelease)
+          fi
+
+          gh release create "$RELEASE_TAG" release-assets/* "${options[@]}"
