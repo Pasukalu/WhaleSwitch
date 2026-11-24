@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.0
+
+- Connection diagnostics identify DNS, TLS and connection failures, HTTP status categories, interrupted or oversized bodies, invalid JSON, and model-list shape mismatches.
+- The connection card shows the observed stage, status, elapsed time, and a suggested check. HTTP 429 and 503 can show a wait time from `Retry-After`.
+- A copyable diagnostic summary contains fixed status fields and omits the endpoint, credentials, headers, raw response, and model identifiers.
+- One explicit test sends a model-list request with a total request deadline, redirects and automatic retries disabled, and a clear WhaleSwitch user agent.
+
 ## 1.7.0
 
 - Save a project-specific skill manifest baseline, rescan the selected project, and review additions, modifications, and removals across the three supported CLI locations.

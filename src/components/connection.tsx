@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, CircleCheck, KeyRound, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Activity, CircleCheck, Copy as CopyIcon, KeyRound, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api, previewMode } from "../api";
-import { DEFAULT_ENDPOINT, initialProbe, type ProbeResult, type Protocol, type Tool, type View } from "../domain";
+import { DEFAULT_ENDPOINT, initialProbe, probeReport, type ProbeInput, type ProbeResult, type Protocol, type Tool, type View } from "../domain";
 import { errorText, type Copy, type Language } from "../i18n";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -89,11 +89,55 @@ export function Connection({ t, language, view, tool }: { t: Copy; language: Lan
         })}>{t.removeKey}</Button>
       </div></>}
       {status && <div role={status.error ? "alert" : "status"} className={status.error ? "inline-message error" : "inline-message success"}>{status.error ? <TriangleAlert size={17}/> : <CircleCheck size={17}/>} {status.message}</div>}
-      {result && <div role="status" className={result.outcome === "connected" ? "inline-message success" : "inline-message error"}>
-        {result.outcome === "connected" ? <CircleCheck size={17}/> : <TriangleAlert size={17}/>}
-        <span>{t[result.outcome]} · {result.status ? `HTTP ${result.status} · ` : ""}{result.elapsed_ms} ms{result.models === null ? "" : ` · ${result.models} ${t.models}`}</span>
-      </div>}
+      {result && <ConnectionResult t={t} input={input} result={result}/>}
     </div>
     <div className="panel-footer"><Button disabled={busy || previewMode || !input.endpoint} onClick={() => void run(async () => setResult(await api.probe(input)))}><Activity/>{busy ? t.testing : t.test}</Button></div>
   </section>;
+}
+
+function ConnectionResult({ t, input, result }: { t: Copy; input: ProbeInput; result: ProbeResult }) {
+  const [copyState, setCopyState] = useState<"copied" | "manual" | null>(null);
+  const summaryField = useRef<HTMLTextAreaElement>(null);
+  const { title, hint } = t.probeResults[result.outcome];
+  const success = result.outcome === "connected";
+  const summary = probeReport(input, result);
+
+  async function copySummary() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(summary);
+        setCopyState("copied");
+        return;
+      }
+    } catch {
+      // WebViews can leave clipboard access disabled.
+    }
+    const field = summaryField.current;
+    if (!field) return;
+    field.focus();
+    field.select();
+    setCopyState("manual");
+  }
+
+  return <div className="probe-result form-stack">
+    <div role="status" className={success ? "inline-message success" : "inline-message error"}>
+      {success ? <CircleCheck size={17}/> : <TriangleAlert size={17}/>}
+      <div><strong>{title}</strong>{hint && <p className="small">{hint}</p>}</div>
+    </div>
+    <dl className="probe-metadata">
+      <div><dt>{t.probeStageLabel}</dt><dd>{t.probeStages[result.stage]}</dd></div>
+      {result.status !== null && <div><dt>HTTP</dt><dd>{result.status}</dd></div>}
+      <div><dt>{t.probeElapsed}</dt><dd>{result.elapsed_ms} ms</dd></div>
+      {result.models !== null && <div><dt>{t.probeModels}</dt><dd>{result.models}</dd></div>}
+      {result.retry_after_seconds !== null && <div><dt>{t.probeRetryAfter}</dt><dd>{result.retry_after_seconds} {t.probeSeconds}</dd></div>}
+    </dl>
+    <details className="probe-summary">
+      <summary>{t.probeReport}</summary>
+      <textarea ref={summaryField} aria-label={t.probeReport} className="ui-input mono" readOnly value={summary} rows={7}/>
+      <div className="row-actions">
+        <Button variant="outline" size="sm" onClick={() => void copySummary()}><CopyIcon/>{t.probeCopy}</Button>
+        {copyState && <span role="status" className="small muted">{copyState === "copied" ? t.probeCopied : t.probeCopyManual}</span>}
+      </div>
+    </details>
+  </div>;
 }

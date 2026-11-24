@@ -22,7 +22,7 @@ Choose a platform in [GitHub Releases](https://github.com/Pasukalu/WhaleSwitch/r
 | macOS Intel | `*-macos-x64.dmg` | Mount the disk image and drag WhaleSwitch to Applications. |
 | Ubuntu x64 | `*-linux-x64.deb` | Open it with the installer or use `sudo apt install` with the selected local `.deb`. |
 
-Release notes identify each version's platform signing status and retest coverage. A detached Sigstore statement signs the retest results and digests of the five v1.6.0 packages. Linux credential operations require an available and unlocked Secret Service. See [release verification](docs/RELEASE-VERIFICATION.md) and the [checksum examples](README.md#安装).
+Release notes identify each version's platform signing status and retest coverage. Sigstore statements cover the build provenance and retest results of the five downloadable packages. Linux credential operations require an available and unlocked Secret Service. See [release verification](docs/RELEASE-VERIFICATION.md) and the [checksum examples](README.md#安装).
 
 ## First run
 
@@ -45,6 +45,12 @@ Release notes identify each version's platform signing status and retest coverag
 
 Imports include `SKILL.md` and supported `.md` and `.txt` files in `references`. The preview reports skipped attachments. WhaleSwitch rechecks the reviewed fingerprints and places the manifest after its references. [Agent Skills specification](https://agentskills.io/specification)
 
+### Diagnose a connection
+
+In **Connection test**, choose the API protocol and enter the base or Models URL. Store a provider-issued API key, or enable keyless mode for an OpenAI-compatible loopback service. Select **Test connection** to send a single model-list request.
+
+The result shows the stage, elapsed time, any HTTP status, and a relevant check. For example, 401 points to the credential or protocol and 403 points to permissions or gateway policy. For 429 and 503, WhaleSwitch displays a valid `Retry-After` delay when available. Open **Redacted diagnostic summary** to copy the status fields for a support report. [OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list) · [Anthropic Models](https://platform.claude.com/docs/en/api/models/list)
+
 ## Supported configuration
 
 | CLI | User-level file | Editable settings |
@@ -62,7 +68,7 @@ For OpenCode V1, WhaleSwitch also supports an absolute JSON or JSONC path in `OP
 | Profiles | Saves, renames, duplicates and transfers portable profiles. Applying a profile lets you select individual fields, with removals starting unchecked. |
 | Plans | Saves or imports a combination of tool settings, reviews and applies selected fields, and links each run to available backups. |
 | Snapshots | Captures and compares snapshots at the original tool and path. Restore selected fields, or restore a full file to recover from invalid syntax. |
-| Connection test | Requests a model list from an explicitly selected OpenAI-compatible or Anthropic endpoint. Keyless OpenAI-compatible probes are limited to loopback targets. |
+| Connection test | Diagnoses DNS, TLS, HTTP, and response failures for an explicitly selected Models endpoint and provides a shareable summary. |
 
 ## Local storage
 

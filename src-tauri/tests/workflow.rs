@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, io::{BufRead, BufReader, Write}, net::TcpListener, path::PathBuf, sync::Mutex, thread};
 use tempfile::TempDir;
-use whaleswitch_lib::{ConfigObservation, Engine, Error, Field, Fields, ProbeInput, Protocol, Result, SecretStore, Tool};
+use whaleswitch_lib::{ConfigObservation, Engine, Error, Field, Fields, ProbeInput, ProbeOutcome, ProbeStage, Protocol, Result, SecretStore, Tool};
 use zeroize::Zeroizing;
 
 #[derive(Default)]
@@ -305,7 +305,8 @@ fn probes_a_local_models_endpoint_with_endpoint_scoped_keys() {
     let other = ProbeInput { tool: Tool::Claude, protocol: Protocol::Openai, endpoint: input.endpoint.clone(), anonymous: false };
     assert!(!f.engine.has_key(&other).unwrap());
     let result = f.engine.probe(&input).unwrap();
-    assert_eq!(result.outcome, "connected");
+    assert_eq!(result.outcome, ProbeOutcome::Connected);
+    assert_eq!(result.stage, ProbeStage::Models);
     assert_eq!(result.models, Some(1));
     server.join().unwrap();
     f.engine.remove_key(&input).unwrap();
@@ -494,7 +495,8 @@ fn keyless_loopback_probe_skips_the_os_vault_and_handles_http_redirect() {
     });
     let input = ProbeInput { tool: Tool::Opencode, protocol: Protocol::Openai, endpoint: format!("http://{address}/v1"), anonymous: true };
     let result = f.engine.probe(&input).unwrap();
-    assert_eq!(result.outcome, "redirect");
+    assert_eq!(result.outcome, ProbeOutcome::Redirect);
+    assert_eq!(result.stage, ProbeStage::Http);
     assert_eq!(result.status, Some(302));
     server.join().unwrap();
 }

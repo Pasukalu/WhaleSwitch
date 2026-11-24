@@ -22,7 +22,7 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 | macOS Intel | `*-macos-x64.dmg` | 挂载 DMG，将 WhaleSwitch 拖到 Applications。 |
 | Ubuntu x64 | `*-linux-x64.deb` | 用软件安装器打开，或在下载目录用 `sudo apt install` 安装选定的 `.deb`。 |
 
-发布页记录各版本的系统签名状态和复测范围。v1.6.0 使用 Sigstore 对复测记录和五个下载包的摘要签名。系统签名及验证命令见 [发布验证](docs/RELEASE-VERIFICATION.md)。Linux 的密钥库操作需要桌面会话中的 Secret Service 可用并解锁。
+发布页记录各版本的系统签名状态和复测范围。五个下载包可通过 Sigstore 验证构建来源及复测记录。系统签名及验证命令见 [发布验证](docs/RELEASE-VERIFICATION.md)。Linux 的密钥库操作需要桌面会话中的 Secret Service 可用并解锁。
 
 <details>
 <summary>校验安装包 SHA-256</summary>
@@ -30,16 +30,16 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
 ```powershell
-Get-FileHash .\WhaleSwitch-1.7.0-windows-x64.exe -Algorithm SHA256
-Get-FileHash .\WhaleSwitch-1.7.0-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.8.0-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.8.0-windows-x64-portable.zip -Algorithm SHA256
 ```
 
 ```sh
 # macOS Apple Silicon
-shasum -a 256 -c WhaleSwitch-1.7.0-macos-arm64.dmg.sha256
+shasum -a 256 -c WhaleSwitch-1.8.0-macos-arm64.dmg.sha256
 
 # Ubuntu
-sha256sum -c WhaleSwitch-1.7.0-linux-x64.deb.sha256
+sha256sum -c WhaleSwitch-1.8.0-linux-x64.deb.sha256
 ```
 
 </details>
@@ -65,6 +65,12 @@ sha256sum -c WhaleSwitch-1.7.0-linux-x64.deb.sha256
 
 导入包含 `SKILL.md` 和 `references` 中受支持的 `.md`、`.txt`，其余附件计入跳过数量。导入前重验来源指纹，先写参考文档，最后写入口文件。 [技能规范](https://agentskills.io/specification)
 
+### 排查连接问题
+
+打开 **连接测试**，选择 API 协议并核对基础 URL 或 Models URL。保存服务商签发的 API 密钥，或对 OpenAI 兼容回环服务使用无密钥模式，再点击 **测试连接**。
+
+结果会给出阶段、耗时、收到的 HTTP 状态及对应检查项。例如 401 提示核对密钥与协议，403 提示检查权限和网关策略。429 或 503 带有效 `Retry-After` 时会显示建议等待时间。需要提交问题时可展开并复制 **脱敏诊断摘要**。 [OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list) · [Anthropic Models](https://platform.claude.com/docs/en/api/models/list)
+
 ## 工具与配置范围
 
 | 工具 | 用户级文件 | 可编辑字段 |
@@ -82,14 +88,14 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 | 配置档案 | 保存、重命名、复制、导出和导入档案。应用前预览差异，带清除动作的字段初始不勾选。 |
 | 配置方案 | 保存或导入跨工具的字段组合。一次预览所有目标，按需提交并查看每次执行的恢复入口。 |
 | 快照 | 手动创建、比较、按字段恢复和恢复整份文件。按字段恢复会保留当前文件中的其他字段和未知配置。语法损坏时可恢复整份文件。 |
-| 连接测试 | 对 OpenAI 兼容或 Anthropic 端点发起模型列表请求，显示状态、耗时和模型数。OpenAI 兼容的回环服务可使用无密钥模式。 |
+| 连接测试 | 对 OpenAI 兼容或 Anthropic 端点手动发起模型列表请求，区分 DNS、TLS、HTTP 与响应体故障，并生成可分享摘要。 |
 
 ## 数据与密钥
 
 - 快照以加密形式存入本地 SQLite，快照密钥和连接测试 API 密钥保存在操作系统安全存储中。已有配置需要通过加密备份校验后才会写入。
 - 配置档案的 JSON 仅包含工具、名称与支持字段，保留显式清除值。换设备时可导入档案，再勾选需要迁移的字段。
 - 方案 JSON 包含版本、名称和每个工具的支持字段。密钥、本机配置路径及历史快照保存在本地。
-- 连接测试使用服务商签发的 API 密钥，仅在手动触发时发送请求。密钥按工具、协议及具体请求 URL 隔离，重定向与系统代理继承均已禁用。
+- 连接测试使用服务商签发的 API 密钥，仅在手动触发时发送一次请求。密钥按工具、协议及具体请求 URL 隔离。脱敏摘要只包含工具、协议、鉴权模式、阶段、结果、HTTP 状态、耗时、模型数量和建议等待时间。
 - 项目盘点读取固定候选文件。技能基线只保存项目路径的指纹、相对清单路径和内容指纹。技能原文在用户选择的导入目录中审阅。 [架构与安全](docs/ARCHITECTURE.md)
 
 ## 开发与贡献

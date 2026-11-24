@@ -17,6 +17,7 @@
 | `engine::plan_apply` | 预览每种工具的目标和差异，集中预检与备份，逐文件提交并在失败后补偿。 |
 | `portable` | Windows 识别可执行文件旁的空标记，将数据库与 WebView 数据定向到 `WhaleSwitchData`。 |
 | `probe` | 目标 URL 规则、密钥作用域和显式触发的模型列表请求。 |
+| `probe::transport` | DNS 与 TLS 错误分类、请求期限、HTTP 状态与有界的响应校验。仅向界面返回结构化诊断字段。 |
 | `desktop` / `src` | Tauri IPC 和原生选文件窗口，以及 React 界面。 |
 
 适配器允许列表与可移植字段见 [README](../README.md)。Codex 的内置 OpenAI provider 使用 `openai_base_url`。Claude Code 的 URL 来自 `env.ANTHROPIC_BASE_URL`。OpenCode 的模型和默认 Agent 在 V1/V2 中共享，保留版本各自的 provider 配置。
@@ -60,6 +61,10 @@ Windows 便携模式在创建主窗口前选择数据库与 WebView 目录。目
 ## 密钥与网络
 
 API 密钥和快照加密密钥进入操作系统安全存储。恢复快照需要原密钥库条目。桌面后端不会读取浏览器、CLI 登录文件或网页会话。模型列表请求由用户手动触发，API 密钥绑定工具、协议及规范化后的完整请求 URL。禁止重定向、继承代理、URL 凭据、查询和片段。HTTPS 是默认要求，HTTP 与无密钥模式各自限制在回环地址。localhost 强制解析到回环地址。
+
+传输层使用操作系统 DNS 和 Rustls，按可辨识的错误类型定位 DNS、建连、TLS、等候响应、HTTP、读取响应和格式校验。建连期限为 5 秒，整次 HTTP 请求的期限为 12 秒，禁用自动重试。仅对成功响应读取正文，最多接受 1 MiB。最小兼容格式为 `data` 数组及每条记录的非空字符串 `id`。返回数量只统计当前响应。
+
+鉴权或限流诊断依据已观测到的 HTTP 状态。429 或 503 的 `Retry-After` 可转换为秒数提示，后续请求仍由用户触发。前端通过明确字段生成摘要，报告仅包含本地工具、协议、鉴权模式、阶段、结果和数值指标。 [HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3)
 
 JSON 档案和配置档案仅包含支持字段。原文里自带的凭据留在原配置及加密快照中。接口仅返回有界的安全状态与模型数量，日志不会记录密钥或响应正文。
 

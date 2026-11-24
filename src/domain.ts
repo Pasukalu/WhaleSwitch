@@ -52,10 +52,28 @@ export type SkillImportPreview = {
   excluded: string[]; files: SkillImportFile[];
 };
 export type ProbeInput = { tool: Tool; protocol: Protocol; endpoint: string; anonymous?: boolean };
+export type ProbeStage = "dns" | "connect" | "tls" | "request" | "http" | "body" | "models";
+export type ProbeOutcome = "connected" | "timeout" | "dns_error" | "tls_error" | "connection_refused"
+  | "network_error" | "redirect" | "rejected" | "forbidden" | "unsupported" | "rate_limited"
+  | "server_error" | "http_error" | "body_error" | "response_too_large" | "invalid_json" | "unexpected_response";
 export type ProbeResult = {
-  elapsed_ms: number; status: number | null; models: number | null;
-  outcome: "connected" | "timeout" | "network_error" | "redirect" | "rejected" | "unsupported" | "rate_limited" | "http_error" | "unexpected_response";
+  elapsed_ms: number; status: number | null; models: number | null; retry_after_seconds: number | null;
+  stage: ProbeStage; outcome: ProbeOutcome;
 };
+
+export function probeReport(input: Pick<ProbeInput, "tool" | "protocol" | "anonymous">, result: ProbeResult) {
+  return JSON.stringify({
+    tool: input.tool,
+    protocol: input.protocol,
+    auth_mode: input.anonymous ? "anonymous" : "api_key",
+    stage: result.stage,
+    outcome: result.outcome,
+    http_status: result.status,
+    elapsed_ms: result.elapsed_ms,
+    models_returned: result.models,
+    retry_after_seconds: result.retry_after_seconds,
+  }, null, 2);
+}
 export const FIELD_ORDER: Field[] = ["model", "model_provider", "openai_base_url", "anthropic_base_url",
   "model_reasoning_effort", "model_reasoning_summary", "model_verbosity", "default_agent"];
 export const FIELD_OPTIONS: Partial<Record<Field, string[]>> = {

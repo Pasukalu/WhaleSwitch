@@ -1,6 +1,6 @@
 # 发布验证 · Release verification
 
-## v1.6.0 复测签名
+## 发布包复测签名
 
 GitHub Actions 从同一发布记录固定五个包和各校验文件的 SHA-256。各平台下载安装前核对文件摘要。通过整套复测后，GitHub Actions 使用 Sigstore 签名测试声明，将签名与原发布包的摘要关联。原发布包和版本标签保留原样。
 
@@ -11,14 +11,14 @@ GitHub Actions 从同一发布记录固定五个包和各校验文件的 SHA-256
 | Ubuntu x64 | 安装发布的 DEB，在 Xvfb 会话启动。 |
 | 所有平台 | Rust 测试使用真实系统密钥库，验证测试凭据的保存和清除、三个 CLI 夹具的加密备份、逐文件写入与原字节恢复。原生文件选择器仍需交互复测。 |
 
-Windows 的系统签名需要受信任的 Authenticode 发布者身份。macOS 的系统签名和公证需要 Developer ID Application 证书与 Apple 公证凭据。v1.6.0 发布包当前使用单独的 Sigstore 证明，系统签名状态以各平台复测日志为准。
+Windows 的系统签名需要受信任的 Authenticode 发布者身份。macOS 的系统签名和公证需要 Developer ID Application 证书与 Apple 公证凭据。发布页的 Sigstore 复测证明与系统签名状态可分别查看。
 
 ## Verify the detached statement
 
-In a directory containing a v1.6.0 package and the detached Sigstore bundle from the release, run the following command with an authenticated GitHub CLI. Substitute the filename to verify a different package from the same release.
+In a directory containing a package and the detached Sigstore bundle from the same release, run the following command with an authenticated GitHub CLI. This example verifies the v1.8.0 portable ZIP. Substitute the matching bundle and package filenames to verify another version.
 
 ```powershell
-gh attestation verify ./WhaleSwitch-1.6.0-windows-x64-portable.zip --bundle ./WhaleSwitch-1.6.0-verification.sigstore.json --repo Pasukalu/WhaleSwitch --signer-workflow Pasukalu/WhaleSwitch/.github/workflows/verify-release.yml --predicate-type https://github.com/Pasukalu/WhaleSwitch/attestations/native-release-retest/v1 --deny-self-hosted-runners
+gh attestation verify ./WhaleSwitch-1.8.0-windows-x64-portable.zip --bundle ./WhaleSwitch-1.8.0-verification.sigstore.json --repo Pasukalu/WhaleSwitch --signer-workflow Pasukalu/WhaleSwitch/.github/workflows/verify-release.yml --predicate-type https://github.com/Pasukalu/WhaleSwitch/attestations/native-release-retest/v1 --deny-self-hosted-runners
 ```
 
 The statement covers the published Windows NSIS installer and portable ZIP, both macOS DMGs, and the Ubuntu DEB. It records the original release commit and the separate verification run. Native keychain operations use isolated fixtures and disposable credentials.

@@ -1,10 +1,12 @@
 use crate::{Engine, Error, Result, Tool};
-use reqwest::{blocking::Client, header::{HeaderValue, AUTHORIZATION}, redirect::Policy};
+use reqwest::header::{HeaderValue, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{io::Read, net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}, time::{Duration, Instant}};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use url::{Host, Url};
 use zeroize::Zeroizing;
+
+mod transport;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -24,8 +26,36 @@ pub struct ProbeInput {
 pub struct ProbeResult {
     pub elapsed_ms: u64,
     pub status: Option<u16>,
-    pub outcome: &'static str,
+    pub stage: ProbeStage,
+    pub outcome: ProbeOutcome,
     pub models: Option<usize>,
+    pub retry_after_seconds: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeStage { Dns, Connect, Tls, Request, Http, Body, Models }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeOutcome {
+    Connected,
+    Timeout,
+    DnsError,
+    TlsError,
+    ConnectionRefused,
+    NetworkError,
+    Redirect,
+    Rejected,
+    Forbidden,
+    Unsupported,
+    RateLimited,
+    ServerError,
+    HttpError,
+    BodyError,
+    ResponseTooLarge,
+    InvalidJson,
+    UnexpectedResponse,
 }
 
 impl ProbeInput {
@@ -97,19 +127,14 @@ impl Engine {
             if !api_key(&secret) { return Err(Error::InvalidSecret); }
             Some(secret)
         };
-        let mut builder = Client::builder().no_proxy().redirect(Policy::none())
-            .connect_timeout(Duration::from_secs(5)).timeout(Duration::from_secs(12));
+        let mut builder = transport::client_builder();
         if target.host_str() == Some("localhost") {
             let port = target.port_or_known_default().ok_or(Error::InvalidEndpoint)?;
             let local = [SocketAddr::from((Ipv4Addr::LOCALHOST, port)), SocketAddr::from((Ipv6Addr::LOCALHOST, port))];
             builder = builder.resolve_to_addrs("localhost", &local);
         }
         let client = builder.build().map_err(|_| Error::Io)?;
-        let start = Instant::now();
-        let result = |status, outcome, models| ProbeResult {
-            elapsed_ms: start.elapsed().as_millis() as u64, status, outcome, models,
-        };
-        let mut request = client.get(target);
+        let mut request = client.get(target).timeout(transport::REQUEST_TIMEOUT);
         match (input.protocol, secret.as_ref()) {
             (Protocol::Openai, Some(secret)) => {
                 let bearer = Zeroizing::new(format!("Bearer {}", secret.as_str()));
@@ -124,31 +149,7 @@ impl Engine {
             }
             (_, None) => {}
         }
-        let response = match request.send() {
-            Ok(response) => response,
-            Err(error) if error.is_timeout() => return Ok(result(None, "timeout", None)),
-            Err(_) => return Ok(result(None, "network_error", None)),
-        };
-        let status = response.status().as_u16();
-        if !response.status().is_success() {
-            let outcome = match status {
-                300..=399 => "redirect",
-                401 | 403 => "rejected",
-                404 | 405 => "unsupported",
-                429 => "rate_limited",
-                _ => "http_error",
-            };
-            return Ok(result(Some(status), outcome, None));
-        }
-        let mut body = Zeroizing::new(Vec::new());
-        if response.take(1_048_577).read_to_end(&mut body).is_err() || body.len() > 1_048_576 {
-            return Ok(result(Some(status), "unexpected_response", None));
-        }
-        let models = serde_json::from_slice::<serde_json::Value>(&body).ok().and_then(|value| {
-            let data = value.get("data")?.as_array()?;
-            data.iter().all(|entry| entry.get("id").and_then(|id| id.as_str()).is_some()).then_some(data.len())
-        });
-        Ok(result(Some(status), if models.is_some() { "connected" } else { "unexpected_response" }, models))
+        Ok(transport::inspect(request))
     }
 }
 

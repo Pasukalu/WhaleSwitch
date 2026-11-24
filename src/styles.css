@@ -195,6 +195,15 @@ h1, h2, h3, p { margin: 0; }
 .source-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .source-heading h3, .source-detail h3 { font-size: 12px; font-weight: 650; }
 .source-path code { white-space: normal; overflow-wrap: anywhere; }
+.probe-result { gap: 9px; }
+.probe-result .inline-message p { margin: 3px 0 0; }
+.probe-metadata { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+.probe-metadata > div { min-width: 75px; padding: 6px 9px; border: 1px solid var(--edge); border-radius: 8px; }
+.probe-metadata dt { font-size: 11px; color: var(--muted); }
+.probe-metadata dd { margin: 3px 0 0; font-size: 12px; }
+.probe-summary { min-width: 0; }
+.probe-summary summary { width: fit-content; cursor: pointer; font-size: 12px; font-weight: 600; }
+.probe-summary textarea { box-sizing: border-box; width: 100%; margin: 7px 0; padding: 8px; resize: vertical; font-size: 12px; }
 .source-error { color: var(--danger); }
 .source-detail { display: grid; gap: 5px; }
 .source-tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 0; margin: 0; list-style: none; }
