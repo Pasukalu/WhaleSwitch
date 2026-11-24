@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Add a bilingual, read-only project skills inventory for documented Codex CLI, Claude Code, and OpenCode project folders.
+- Display relative manifest paths, candidate CLIs, SHA-256 fingerprints, and a matching-folder-name hint across shared CLIs.
+- Report partial scans and skip links, unreadable files, and files over the scan limits.
+- Document trend research, acceptance criteria, and future priorities in the product roadmap.
+
 ## 1.2.0
 
 - Select the individual fields to apply from a saved profile.

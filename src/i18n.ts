@@ -1,6 +1,14 @@
 export type Language = "zh" | "en";
 export const copy = {
   zh: {
+    skills: "项目技能", skillsIntro: "盘点项目根目录的 SKILL.md，查看各 CLI 可能发现的技能。",
+    skillsSelect: "选择项目目录", skillsScanning: "正在扫描技能…", skillsFolder: "当前项目目录",
+    skillsStart: "选择一个项目开始盘点", skillsLocationHint: "检查 .agents/skills、.claude/skills 和 .opencode/skills 下的直接子目录。",
+    skillsNative: "请在桌面应用中扫描本地项目目录。", skillsEmpty: "未发现可列出的技能文件",
+    skillsCount: "份技能文件", skillsSkipped: "个路径因格式、大小、访问权限或链接而跳过。",
+    skillsLimited: "至少一个来源超过 256 个项目，当前结果可能不完整。",
+    skillsSameName: "目录同名", skillsScope: "只读盘点。工具标签依据目录位置。同名提示比较目录名，实际加载还取决于 CLI 的设置和工作目录。",
+    skillsFingerprint: "SKILL.md 指纹 SHA-256",
     profiles: "配置档案", profilesIntro: "保存常用设置，应用前先预览差异。",
     profileName: "档案名称", profileExample: "例如：本地开发", profileSaveDraft: "保存草稿为档案",
     profileSaveCurrent: "保存当前配置", profileApplied: "已应用档案。",
@@ -44,6 +52,14 @@ export const copy = {
     missingSubtitle: "完成首次设置后，配置会显示在这里。", safeStorage: "快照使用系统密钥库加密", failed: "操作未完成", diagnostic: "连接诊断",
   },
   en: {
+    skills: "Project skills", skillsIntro: "Inventory project-root SKILL.md files and see which CLIs may discover them.",
+    skillsSelect: "Choose project folder", skillsScanning: "Scanning skills…", skillsFolder: "Current project folder",
+    skillsStart: "Choose a project to get started", skillsLocationHint: "Checks direct subfolders of .agents/skills, .claude/skills, and .opencode/skills.",
+    skillsNative: "Use the desktop app to scan a local project folder.", skillsEmpty: "No skill manifests found",
+    skillsCount: "skill files", skillsSkipped: "paths skipped due to format, size, access, or links.",
+    skillsLimited: "At least one source exceeds 256 entries. Results may be incomplete.",
+    skillsSameName: "Matching folder name", skillsScope: "Read-only inventory. CLI labels reflect folder locations. Matching names refer to folders. Loading also depends on CLI settings and working directory.",
+    skillsFingerprint: "SKILL.md SHA-256 fingerprint",
     profiles: "Profiles", profilesIntro: "Save a configuration and review its changes before applying it.",
     profileName: "Profile name", profileExample: "e.g. Local development", profileSaveDraft: "Save draft as profile",
     profileSaveCurrent: "Save current config", profileApplied: "Profile applied.",

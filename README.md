@@ -12,6 +12,8 @@ Manage Codex CLI, Claude Code, and OpenCode from one desktop app. Save reusable 
 
 ## Quick start
 
+[产品需求与路线图 / Product requirements and roadmap](docs/PRODUCT-ROADMAP.md)
+
 1. 从源码运行，或在安装包发布后从仓库的 **Releases** 下载。构建流程覆盖 Windows x64（NSIS）、macOS Apple Silicon 和 Intel（DMG）、Ubuntu x64（DEB）。
 2. 打开 WhaleSwitch 并扫描工具。侧栏显示 PATH 检测结果，配置页显示实际文件路径。已有配置可直接管理。
 3. 修改字段后选择 **查看差异**。也可在 **配置档案** 保存当前配置或草稿，随后比较并应用。
@@ -61,6 +63,20 @@ The field list follows the [Codex configuration reference](https://learn.chatgpt
 - OpenAI-compatible and Anthropic APIs are tested with a Models request. Use an API key issued by the provider. The app stores it in Windows Credential Manager, macOS Keychain, or Linux Secret Service, scoped to the tool, API protocol and request URL.
 - Keyless OpenAI-compatible probes are available for loopback services such as Ollama or LM Studio. The default is `http://127.0.0.1:11434/v1`; change the port or path as needed.
 - Tests report response category, status, elapsed time and model count. They do not send a prompt. Automatic redirects and proxy inheritance are disabled.
+
+## Project skills / 项目技能
+
+在桌面应用打开 **项目技能 → 选择项目目录**，即可按目录位置查看 Codex CLI、Claude Code 和 OpenCode 可能发现的技能。同名提示比较技能文件夹名，SHA-256 指纹可用于核对 `SKILL.md` 的内容是否一致。盘点只读，选定路径和扫描结果仅在面板中临时显示。
+
+Open **Project skills → Choose project folder** to check skill manifests in the selected folder. WhaleSwitch lists relative paths, CLI discovery candidates, manifest fingerprints, and matching folder names across shared CLIs.
+
+| Project-relative source | CLI discovery candidates |
+| --- | --- |
+| `.agents/skills/<folder>/SKILL.md` | Codex CLI, OpenCode |
+| `.claude/skills/<folder>/SKILL.md` | Claude Code, OpenCode |
+| `.opencode/skills/<folder>/SKILL.md` | OpenCode |
+
+The scan checks direct subfolders, with a limit of 256 entries per source and 128 KiB per manifest. It skips links, Windows reparse points, and unreadable or non-UTF-8 manifests. CLI runtime results can differ based on working directory, personal skills, CLI settings, or tool version. See the [product requirements](docs/PRODUCT-ROADMAP.md#13-项目技能盘点已实现) for the exact scope and sources.
 
 ## Develop and build
 

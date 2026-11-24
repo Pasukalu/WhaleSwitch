@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { demo } from "./demo";
-import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, SkillInventory, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 function request<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -9,6 +9,7 @@ function request<T>(command: string, args?: Record<string, unknown>): Promise<T>
 
 export const api = {
   discover: () => request<ToolInfo[]>("discover"),
+  pickProjectSkills: () => request<SkillInventory>("pick_project_skills"),
   view: (tool: Tool) => request<View>("view", { tool }),
   preview: (target: Target, patch: Fields) => request<Change[]>("preview", { target, patch }),
   save: (target: Target, patch: Fields) => request<View>("save", { target, patch }),

@@ -345,7 +345,7 @@ fn write_archive(destination: &Path, archive: &impl Serialize) -> Result<()> {
 
 fn digest(bytes: &[u8]) -> String { hex::encode(Sha256::digest(bytes)) }
 
-fn unsafe_meta(meta: &fs::Metadata) -> bool {
+pub(crate) fn unsafe_meta(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -354,7 +354,7 @@ fn unsafe_meta(meta: &fs::Metadata) -> bool {
     meta.file_type().is_symlink()
 }
 
-fn validate_ancestors(path: &Path) -> Result<()> {
+pub(crate) fn validate_ancestors(path: &Path) -> Result<()> {
     if !path.is_absolute() || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
         return Err(Error::UnsafePath);
     }
@@ -377,6 +377,13 @@ fn metadata(path: &Path) -> Result<Option<fs::Metadata>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(_) => Err(Error::Io),
     }
+}
+
+pub(crate) fn fingerprint_text_file(path: &Path, limit: u64) -> Result<Option<String>> {
+    let state = read_state(path, limit)?;
+    let Some(bytes) = state.bytes else { return Ok(None); };
+    std::str::from_utf8(&bytes).map_err(|_| Error::InvalidConfig)?;
+    Ok(Some(digest(&bytes)))
 }
 
 fn read_state(path: &Path, limit: u64) -> Result<FileState> {

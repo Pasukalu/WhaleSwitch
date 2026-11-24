@@ -1,4 +1,5 @@
 use crate::{Change, Engine, Error, Fields, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, Result, Snapshot, Tool, ToolInfo, View};
+use crate::{scan_project_skills, SkillInventory};
 use serde::Deserialize;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -11,6 +12,15 @@ struct Target { tool: Tool, path: String, revision: String }
 
 #[tauri::command]
 fn discover(engine: tauri::State<'_, Engine>) -> Vec<ToolInfo> { engine.discover() }
+
+#[tauri::command]
+async fn pick_project_skills(app: AppHandle) -> Result<SkillInventory> {
+    blocking(move || {
+        let root = app.dialog().file().blocking_pick_folder().ok_or(Error::Cancelled)?
+            .into_path().map_err(|_| Error::UnsafePath)?;
+        scan_project_skills(&root)
+    }).await
+}
 
 #[tauri::command]
 fn view(engine: tauri::State<'_, Engine>, tool: Tool) -> Result<View> { engine.view(tool) }
@@ -171,7 +181,7 @@ pub fn run() {
             discover, view, preview, save, snapshot, snapshots, compare_snapshot, restore,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
-            has_key, set_key, remove_key, probe,
+            has_key, set_key, remove_key, probe, pick_project_skills,
         ])
         .run(tauri::generate_context!())
         .expect("WhaleSwitch desktop runtime failed");

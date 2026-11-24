@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Activity, ArrowDownToLine, ArrowUpFromLine, Bookmark, Boxes, Check, ChevronRight, CircleAlert, Cloud, CodeXml,
+  Activity, ArrowDownToLine, ArrowUpFromLine, BookOpen, Bookmark, Boxes, Check, ChevronRight, CircleAlert, Cloud, CodeXml,
   FileCode2, FileQuestion, HardDrive, History, Languages, Layers, Moon, Plus, RefreshCw, Settings2,
   ShieldCheck, Sun, Terminal, Waves,
 } from "lucide-react";
@@ -8,13 +8,14 @@ import { api, previewMode } from "./api";
 import { Connection } from "./components/connection";
 import { DiffDialog } from "./components/diff-dialog";
 import { Profiles, type ProfileEdit } from "./components/profiles";
+import { ProjectSkills } from "./components/project-skills";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { FIELD_OPTIONS, FIELD_ORDER, TOOLS, TOOL_NAMES, defaultProfileSelection, fieldPatch, fieldPath, profileSelectionPatch, targetOf, type Change, type Field, type Fields, type Profile, type ProfileArchive, type Snapshot, type Tool, type ToolInfo, type View } from "./domain";
 import { copy, errorText, type Copy, type Language } from "./i18n";
 import { version } from "../package.json";
 
-type Tab = "config" | "profiles" | "snapshots" | "connectivity" | "settings";
+type Tab = "config" | "profiles" | "snapshots" | "skills" | "connectivity" | "settings";
 type Theme = "dark" | "light" | "system";
 type Review = { kind: "save"; changes: Change[]; patch: Fields }
   | { kind: "restore" | "compare"; changes: Change[]; id: number }
@@ -23,7 +24,7 @@ type Notice = { message: string; error: boolean };
 
 const TOOL_ICON = { codex: Terminal, claude: Cloud, opencode: CodeXml };
 const TABS = [{ id: "config", icon: FileCode2 }, { id: "profiles", icon: Bookmark },
-  { id: "snapshots", icon: History }, { id: "connectivity", icon: Activity }] as const;
+  { id: "snapshots", icon: History }, { id: "skills", icon: BookOpen }, { id: "connectivity", icon: Activity }] as const;
 
 function setPreference(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch { /* ephemeral preferences */ }
@@ -331,6 +332,7 @@ export function App() {
           <div className="dashboard-grid">
             <div className="dashboard-main">
               {tab === "connectivity" ? <Connection key={`${tool}/${view?.revision ?? ""}`} t={t} language={language} view={view} tool={tool}/>
+                : tab === "skills" ? <ProjectSkills t={t} language={language}/>
                 : loading ? <section className="panel"><Empty icon={<RefreshCw size={22}/>} title={t.loading} subtitle={t.data}/></section>
                 : tab === "profiles" ? <Profiles key={tool} t={t} language={language} profiles={profiles}
                   available={Boolean(view && !view.issue)} dirty={dirty} busy={busy} loading={profilesLoading}

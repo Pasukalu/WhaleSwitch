@@ -16,6 +16,8 @@ export type Snapshot = { id: number; timestamp: number; reason: "manual" | "befo
 export type Profile = { id: number; name: string; timestamp: number; fields: Fields };
 export type ProfileArchive = { version: 1; tool: Tool; name: string; fields: Fields };
 export type ProfilePreview = { name: string; changes: Change[] };
+export type SkillEntry = { name: string; path: string; tools: Tool[]; fingerprint: string; same_name: boolean };
+export type SkillInventory = { root: string; entries: SkillEntry[]; skipped: number; limited: boolean };
 export type ProbeInput = { tool: Tool; protocol: Protocol; endpoint: string; anonymous?: boolean };
 export type ProbeResult = {
   elapsed_ms: number; status: number | null; models: number | null;
