@@ -6,6 +6,9 @@ use serde::Serialize;
 use std::{fs::{self, File, OpenOptions}, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use zeroize::Zeroizing;
 
+mod skill_backups;
+pub use skill_backups::SkillBackup;
+
 #[cfg(test)]
 mod native_test;
 
@@ -101,7 +104,13 @@ impl Storage {
             );
             CREATE TABLE IF NOT EXISTS skill_baselines (
               project TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, fingerprints TEXT NOT NULL
-            );")
+            );
+            CREATE TABLE IF NOT EXISTS skill_backups (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, destination TEXT NOT NULL,
+              timestamp INTEGER NOT NULL, action TEXT NOT NULL CHECK(action IN ('upgrade', 'restore')),
+              file_count INTEGER NOT NULL, nonce BLOB NOT NULL, sealed BLOB NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS skill_backups_project ON skill_backups(project, id);")
             .map_err(|_| Error::BackupFailed)?;
         Ok(db)
     }
@@ -111,7 +120,8 @@ impl Storage {
         let encoded = match existing {
             Some(key) => key,
             None if allow_new => {
-                let empty = db.query_row("SELECT NOT EXISTS(SELECT 1 FROM snapshots)", [], |r| r.get::<_, bool>(0))
+                let empty = db.query_row(
+                    "SELECT NOT EXISTS(SELECT 1 FROM snapshots) AND NOT EXISTS(SELECT 1 FROM skill_backups)", [], |r| r.get::<_, bool>(0))
                     .map_err(|_| Error::BackupFailed)?;
                 if !empty { return Err(Error::VaultUnavailable); }
                 let mut key = Zeroizing::new([0u8; 32]);

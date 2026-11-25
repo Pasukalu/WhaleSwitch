@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
-import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, ProjectSkillsReport, RuntimeInfo, SkillImportPreview, SkillLocation, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, ProjectSkillsReport, RuntimeInfo, SkillBackup, SkillEditPreview, SkillImportPreview, SkillLocation, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
 
 export const previewMode = !isTauri();
 export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
@@ -21,6 +21,13 @@ export const api = {
   pickSkillImport: (root: string, location: SkillLocation) => request<SkillImportPreview>("pick_skill_import", { root, location }),
   previewSkillImport: (root: string, location: SkillLocation) => request<SkillImportPreview>("preview_skill_import", { root, location }),
   applySkillImport: (root: string, location: SkillLocation, revision: string) => request<void>("apply_skill_import", { root, location, revision }),
+  previewSkillUpgrade: (root: string, location: SkillLocation) => request<SkillEditPreview>("preview_skill_upgrade", { root, location }),
+  applySkillUpgrade: (root: string, location: SkillLocation, revision: string, selected: string[]) =>
+    request<SkillBackup>("apply_skill_upgrade", { root, location, revision, selected }),
+  skillBackups: (root: string) => request<SkillBackup[]>("skill_backups", { root }),
+  previewSkillRestore: (root: string, id: number) => request<SkillEditPreview>("preview_skill_restore", { root, id }),
+  applySkillRestore: (root: string, id: number, revision: string, selected: string[]) =>
+    request<SkillBackup>("apply_skill_restore", { root, id, revision, selected }),
   pickProjectConfig: () => request<ProjectConfigReport>("pick_project_config"),
   inspectConfig: (tool: Tool) => request<ConfigInspection>("inspect_config", { tool }),
   view: (tool: Tool) => request<View>("view", { tool }),

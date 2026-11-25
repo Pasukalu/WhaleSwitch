@@ -1,7 +1,7 @@
 use super::{SecretStore, SystemVault};
 use crate::{
     Engine, Field, PlanArchive, PlanEntry, PlanFileStatus, PlanSelection, ProbeInput, Protocol,
-    Result, Tool,
+    Result, SkillLocation, Tool,
 };
 use std::{collections::BTreeSet, fs, sync::Mutex};
 use zeroize::Zeroizing;
@@ -102,6 +102,20 @@ fn native_release_roundtrip() {
         engine.restore(result.tool, &current.path, &current.revision, result.snapshot_id.unwrap()).unwrap();
         assert_eq!(fs::read(file).unwrap(), original.as_bytes());
     }
+    let project = root.join("skill-workspace");
+    let source = root.join("review-native");
+    let target = project.join(".agents/skills/review-native");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    let original = b"---\r\nname: review-native\r\ndescription: Original native skill fixture\r\n---\r\n";
+    fs::write(target.join("SKILL.md"), original).unwrap();
+    fs::write(source.join("SKILL.md"), "---\nname: review-native\ndescription: Updated native skill fixture\n---\n").unwrap();
+    let selected = ["SKILL.md".into()];
+    let preview = engine.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    let saved = engine.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision, &selected).unwrap();
+    let restore = engine.preview_skill_restore(&project, saved.id).unwrap();
+    engine.apply_skill_restore(&project, saved.id, &restore.revision, &selected).unwrap();
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), original);
     drop(engine);
     assert!(SystemVault.get(&format!("{prefix}-snapshot-encryption-v1")).unwrap().is_none());
 }

@@ -5,6 +5,9 @@ use serde::Serialize;
 use std::{collections::BTreeSet, fs, io, path::{Path, PathBuf}};
 use zeroize::Zeroizing;
 
+mod edits;
+pub use edits::{SkillEditPreview, SkillTextChange};
+
 const MAX_NODES: usize = 96;
 const MAX_REFERENCE_DEPTH: usize = 3;
 const MAX_BYTES: usize = 512 * 1024;
@@ -268,6 +271,11 @@ fn rollback(files: &[(PathBuf, &ImportDocument)], directories: &[PathBuf]) -> bo
             _ => clean = false,
         }
     }
+    remove_empty_directories(directories) && clean
+}
+
+fn remove_empty_directories(directories: &[PathBuf]) -> bool {
+    let mut clean = true;
     for directory in directories.iter().rev() {
         match directory_exists(directory) {
             Ok(false) => {}

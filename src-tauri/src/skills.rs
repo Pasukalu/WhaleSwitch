@@ -11,7 +11,7 @@ pub(crate) const MAX_MANIFEST_BYTES: u64 = 128 * 1024;
 pub enum SkillLocation { Agents, Claude, Opencode }
 
 impl SkillLocation {
-    const ALL: [Self; 3] = [Self::Agents, Self::Claude, Self::Opencode];
+    pub(crate) const ALL: [Self; 3] = [Self::Agents, Self::Claude, Self::Opencode];
 
     pub(crate) fn directory(self) -> &'static str {
         match self {

@@ -51,6 +51,11 @@ export type SkillImportPreview = {
   source: string; destination: string; name: string; revision: string; existing: boolean; skipped: number;
   excluded: string[]; files: SkillImportFile[];
 };
+export type SkillTextChange = { path: string; before: string | null; after: string | null; blocked: boolean };
+export type SkillEditPreview = { destination: string; revision: string; changes: SkillTextChange[] };
+export type SkillBackup = {
+  id: number; destination: string; timestamp: number; action: "upgrade" | "restore"; file_count: number;
+};
 export type ProbeInput = { tool: Tool; protocol: Protocol; endpoint: string; anonymous?: boolean };
 export type ProbeStage = "dns" | "connect" | "tls" | "request" | "http" | "body" | "models";
 export type ProbeOutcome = "connected" | "timeout" | "dns_error" | "tls_error" | "connection_refused"

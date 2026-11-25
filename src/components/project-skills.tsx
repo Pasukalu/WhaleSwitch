@@ -4,6 +4,7 @@ import { api, previewMode } from "../api";
 import { TOOL_NAMES, type ProjectSkillsReport, type SkillEntry } from "../domain";
 import { errorText, type Copy, type Language } from "../i18n";
 import { SkillImportPanel } from "./project-skill-import";
+import { SkillBackups } from "./skill-backups";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -11,6 +12,7 @@ export function ProjectSkills({ t, language }: { t: Copy; language: Language }) 
   const [report, setReport] = useState<ProjectSkillsReport | null>(null);
   const [section, setSection] = useState<"inventory" | "changes">("inventory");
   const [projectSelection, setProjectSelection] = useState(0);
+  const [backupRefresh, setBackupRefresh] = useState(0);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -49,6 +51,10 @@ export function ProjectSkills({ t, language }: { t: Copy; language: Language }) 
     if (root) setReport(await api.refreshProjectSkills(root));
   }
 
+  function backupChanged() {
+    setBackupRefresh((version) => version + 1);
+  }
+
   async function capture() {
     if (!report) return;
     const data = await api.captureSkillBaseline(report.inventory.root, report.revision);
@@ -66,7 +72,10 @@ export function ProjectSkills({ t, language }: { t: Copy; language: Language }) 
         </div>
         {!previewMode && <div className="row-actions">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void task(choose)}><FolderOpen/>{t.skillsSelect}</Button>
-          {root && <Button size="icon" variant="ghost" disabled={busy} onClick={() => void task(refresh)}
+          {root && <Button size="icon" variant="ghost" disabled={busy} onClick={() => void task(async () => {
+            await refresh();
+            backupChanged();
+          })}
             aria-label={t.reload} title={t.reload}><RefreshCw/></Button>}
         </div>}
       </div>
@@ -122,7 +131,9 @@ export function ProjectSkills({ t, language }: { t: Copy; language: Language }) 
       </div>}
     </section>
     {root && inventory && <SkillImportPanel key={projectSelection} t={t} root={root} entries={inventory.entries}
-      busy={busy} onTask={task} onInstalled={refresh}/>}
+      busy={busy} onTask={task} onInstalled={refresh} onBackupChanged={backupChanged}/>}
+    {root && <SkillBackups key={projectSelection} t={t} language={language} root={root} refreshVersion={backupRefresh}
+      busy={busy} onTask={task} onRestored={refresh} onBackupChanged={backupChanged}/>}
   </div>;
 }
 

@@ -285,6 +285,8 @@ pub fn run() {
             project_skills::pick_project_skills, project_skills::refresh_project_skills,
             project_skills::capture_skill_baseline, project_skills::pick_skill_import,
             project_skills::preview_skill_import, project_skills::apply_skill_import,
+            project_skills::preview_skill_upgrade, project_skills::apply_skill_upgrade,
+            project_skills::skill_backups, project_skills::preview_skill_restore, project_skills::apply_skill_restore,
         ])
         .run(tauri::generate_context!())
         .expect("WhaleSwitch desktop runtime failed");

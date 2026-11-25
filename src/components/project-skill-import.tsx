@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { ArrowDownToLine, CircleAlert, FolderOpen, RefreshCw, X } from "lucide-react";
 import { api } from "../api";
-import type { SkillEntry, SkillImportPreview, SkillLocation } from "../domain";
+import type { SkillEditPreview, SkillEntry, SkillImportPreview, SkillLocation } from "../domain";
 import type { Copy } from "../i18n";
+import { SkillEditReview } from "./skill-edit-review";
 import { Button } from "./ui/button";
 
 const LOCATIONS = [
@@ -11,17 +12,19 @@ const LOCATIONS = [
   { id: "opencode", text: ".opencode/skills · OpenCode" },
 ] as const;
 
-export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled }: {
+export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled, onBackupChanged }: {
   t: Copy;
   root: string;
   entries: SkillEntry[];
   busy: boolean;
   onTask: (action: () => Promise<void>) => Promise<void>;
   onInstalled: () => Promise<void>;
+  onBackupChanged: () => void;
 }) {
   const [location, setLocation] = useState<SkillLocation>("agents");
   const [preview, setPreview] = useState<SkillImportPreview | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [upgrade, setUpgrade] = useState<SkillEditPreview | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
   const sameName = preview && entries.some((entry) => entry.name.toLowerCase() === preview.name.toLowerCase()
     && entry.path !== `${preview.destination}/SKILL.md`);
 
@@ -34,6 +37,26 @@ export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled }
       const data = await api.previewSkillImport(root, next);
       setLocation(next);
       setPreview(data);
+      setUpgrade(null);
+    });
+  }
+
+  function checkUpgrade() {
+    void onTask(async () => setUpgrade(await api.previewSkillUpgrade(root, location)));
+  }
+
+  function applyUpgrade(selected: string[]) {
+    if (!upgrade) return;
+    void onTask(async () => {
+      try {
+        const backup = await api.applySkillUpgrade(root, location, upgrade.revision, selected);
+        setUpgrade(null);
+        setPreview(null);
+        setSaved(`${t.skillUpgradeSaved} · ${t.skillBackupNumber} #${backup.id}`);
+        await onInstalled();
+      } finally {
+        onBackupChanged();
+      }
     });
   }
 
@@ -44,8 +67,9 @@ export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled }
         <div><h2>{t.skillImport}</h2><p>{t.skillImportIntro}</p></div>
       </div>
       <Button variant="outline" size="sm" disabled={busy} onClick={() => void onTask(async () => {
-        setSaved(false);
+        setSaved(null);
         setPreview(await api.pickSkillImport(root, location));
+        setUpgrade(null);
       })}><FolderOpen/>{t.skillImportPick}</Button>
     </div>
     <div className="panel-body form-stack skills-summary">
@@ -56,7 +80,7 @@ export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled }
           {LOCATIONS.map(({ id, text }) => <option key={id} value={id}>{text}</option>)}
         </select>
       </div>
-      {saved && <p className="inline-message success" role="status">{t.skillImportSaved}</p>}
+      {saved && <p className="inline-message success" role="status">{saved}</p>}
       {preview && <>
         <div className="path-row"><span>{t.skillImportSource}</span><code>{preview.source}</code></div>
         <div className="path-row"><span>{t.skillImportTarget}</span><code>{preview.destination}</code></div>
@@ -71,24 +95,34 @@ export function SkillImportPanel({ t, root, entries, busy, onTask, onInstalled }
             </details>}
           </div>
         </div>}
-        <p className="small muted">{t.skillImportReview}</p>
+        {!preview.existing && <><p className="small muted">{t.skillImportReview}</p>
         <div className="form-stack">
           {preview.files.map((file) => <details className="skill-document" key={file.path}>
             <summary title={t.skillImportDocument}><code>{file.path}</code> <small>{file.bytes} B · SHA-256 {file.fingerprint.slice(0, 12)}</small></summary>
             <pre>{file.text}</pre>
           </details>)}
-        </div>
+        </div></>}
+        {upgrade && <SkillEditReview key={upgrade.revision} t={t} preview={upgrade}
+          action="upgrade" busy={busy} onApply={applyUpgrade}/>}
         <div className="row-actions">
-          <Button size="sm" disabled={busy || preview.existing} onClick={() => void onTask(async () => {
+          {preview.existing
+            ? <Button size="sm" variant={upgrade ? "outline" : "default"} disabled={busy} onClick={checkUpgrade}>
+              {upgrade ? t.planRecheck : t.skillUpgradePreview}
+            </Button>
+            : <Button size="sm" disabled={busy} onClick={() => void onTask(async () => {
             await api.applySkillImport(root, location, preview.revision);
             setPreview(null);
-            setSaved(true);
+            setSaved(t.skillImportSaved);
             await onInstalled();
-          })}>{t.skillImportConfirm}</Button>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void onTask(async () => {
+          })}>{t.skillImportConfirm}</Button>}
+          {!preview.existing && <Button variant="outline" size="sm" disabled={busy} onClick={() => void onTask(async () => {
             setPreview(await api.previewSkillImport(root, location));
-          })}><RefreshCw/>{t.planRecheck}</Button>
-          <Button variant="ghost" size="icon" aria-label={t.close} disabled={busy} onClick={() => setPreview(null)}><X/></Button>
+            setUpgrade(null);
+          })}><RefreshCw/>{t.planRecheck}</Button>}
+          <Button variant="ghost" size="icon" aria-label={t.close} disabled={busy} onClick={() => {
+            setPreview(null);
+            setUpgrade(null);
+          }}><X/></Button>
         </div>
       </>}
     </div>

@@ -1,9 +1,24 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 use tempfile::TempDir;
 use whaleswitch_lib::{Engine, Error, Result, SecretStore, SkillChangeKind, SkillLocation};
 use zeroize::Zeroizing;
 
 struct NoVault;
+
+#[derive(Clone, Default)]
+struct MemoryVault(Arc<Mutex<Option<Zeroizing<String>>>>);
+
+impl SecretStore for MemoryVault {
+    fn get(&self, _: &str) -> Result<Option<Zeroizing<String>>> { Ok(self.0.lock().unwrap().clone()) }
+    fn set(&self, _: &str, secret: &str) -> Result<()> {
+        *self.0.lock().unwrap() = Some(Zeroizing::new(secret.into()));
+        Ok(())
+    }
+    fn remove(&self, _: &str) -> Result<()> {
+        *self.0.lock().unwrap() = None;
+        Ok(())
+    }
+}
 
 impl SecretStore for NoVault {
     fn get(&self, _: &str) -> Result<Option<Zeroizing<String>>> { Err(Error::VaultUnavailable) }
@@ -18,8 +33,12 @@ fn sandbox() -> (TempDir, PathBuf) {
 }
 
 fn engine(root: &Path) -> Engine {
+    with_vault(root, NoVault)
+}
+
+fn with_vault(root: &Path, vault: impl SecretStore + 'static) -> Engine {
     let files = ["config.toml", "settings.json", "opencode.jsonc"].map(|name| root.join(name));
-    Engine::isolated(root.join("data"), files, Box::new(NoVault))
+    Engine::isolated(root.join("data"), files, Box::new(vault))
 }
 
 fn write(root: &Path, path: &str, content: impl AsRef<[u8]>) {
@@ -29,6 +48,135 @@ fn write(root: &Path, path: &str, content: impl AsRef<[u8]>) {
 }
 
 const MANIFEST: &str = "\u{feff}---\r\nname: review-pr\r\ndescription: Review local changes\r\n---\r\nRead references/quick.md.\r\n";
+const EXISTING_MANIFEST: &str = "\u{feff}---\r\nname: review-pr\r\ndescription: confidential fixture 67\r\n---\r\nReview previous changes.\r\n";
+const DESTINATION: &str = ".agents/skills/review-pr";
+
+fn upgrade_fixture(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let project = root.join("workspace");
+    let source = root.join("review-pr");
+    let target = project.join(DESTINATION);
+    write(&source, "SKILL.md", MANIFEST);
+    write(&source, "references/quick.md", "new quick reference");
+    write(&source, "references/new/extra.txt", "new reference");
+    write(&source, "references/unselected.md", "proposed content");
+    write(&source, "scripts/task.js", "source script content");
+    write(&target, "SKILL.md", EXISTING_MANIFEST);
+    write(&target, "references/quick.md", "old quick reference\r\n");
+    write(&target, "references/unselected.md", "keep this text");
+    write(&target, "scripts/task.js", "keep this script");
+    (project, source, target)
+}
+
+#[test]
+fn upgrade_and_restore_selected_skill_files_from_encrypted_history() {
+    let (_temp, root) = sandbox();
+    let (project, source, target) = upgrade_fixture(&root);
+    let vault = MemoryVault::default();
+    let session = with_vault(&root, vault.clone());
+    let preview = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    assert_eq!(preview.destination, DESTINATION);
+    assert_eq!(preview.changes.len(), 4);
+    assert_eq!(preview.changes[0].before.as_deref(), Some(EXISTING_MANIFEST));
+    assert_eq!(preview.changes[0].after.as_deref(), Some(MANIFEST));
+    let selection = ["SKILL.md".into(), "references/quick.md".into(), "references/new/extra.txt".into()];
+    let backup = session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision, &selection).unwrap();
+    assert_eq!(backup.file_count, 3);
+    assert_eq!(backup.action, "upgrade");
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), MANIFEST.as_bytes());
+    assert_eq!(fs::read(target.join("references/new/extra.txt")).unwrap(), b"new reference");
+    assert_eq!(fs::read(target.join("references/unselected.md")).unwrap(), b"keep this text");
+    assert_eq!(fs::read(target.join("scripts/task.js")).unwrap(), b"keep this script");
+    let db = fs::read(root.join("data/snapshots.sqlite3")).unwrap();
+    let marker = b"confidential fixture 67";
+    assert!(!db.windows(marker.len()).any(|bytes| bytes == marker));
+    drop(session);
+
+    let reopened = with_vault(&root, vault);
+    assert_eq!(reopened.skill_backups(&project).unwrap()[0].id, backup.id);
+    let other_project = root.join("other");
+    fs::create_dir(&other_project).unwrap();
+    assert!(reopened.skill_backups(&other_project).unwrap().is_empty());
+    assert!(matches!(reopened.preview_skill_restore(&other_project, backup.id), Err(Error::SnapshotMissing)));
+    let restore = reopened.preview_skill_restore(&project, backup.id).unwrap();
+    assert!(restore.changes.iter().all(|change| !change.blocked));
+    assert!(restore.changes.iter().any(|change| change.path == "references/new/extra.txt" && change.after.is_none()));
+    let reverse = reopened.apply_skill_restore(&project, backup.id, &restore.revision, &selection).unwrap();
+    assert_eq!(reverse.action, "restore");
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), EXISTING_MANIFEST.as_bytes());
+    assert_eq!(fs::read(target.join("references/quick.md")).unwrap(), b"old quick reference\r\n");
+    assert!(!target.join("references/new/extra.txt").exists());
+    assert_eq!(reopened.skill_backups(&project).unwrap().len(), 2);
+
+    let redo = reopened.preview_skill_restore(&project, reverse.id).unwrap();
+    reopened.apply_skill_restore(&project, reverse.id, &redo.revision, &selection).unwrap();
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), MANIFEST.as_bytes());
+    assert_eq!(fs::read(target.join("references/new/extra.txt")).unwrap(), b"new reference");
+}
+
+#[test]
+fn skill_upgrade_refuses_unreviewed_paths_and_a_changed_source_or_destination() {
+    let (_temp, root) = sandbox();
+    let (project, source, target) = upgrade_fixture(&root);
+    let session = with_vault(&root, MemoryVault::default());
+    let preview = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    for choice in [vec!["../outside.md".into()], vec!["SKILL.md".into(), "SKILL.md".into()]] {
+        assert!(matches!(
+            session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision, &choice),
+            Err(Error::SkillEditSelection)));
+    }
+    write(&source, "references/quick.md", "revised source");
+    assert!(matches!(session.apply_skill_upgrade(&project, &source, SkillLocation::Agents,
+        &preview.revision, &["SKILL.md".into()]), Err(Error::Conflict)));
+    let preview = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    write(&target, "references/quick.md", "external target change");
+    assert!(matches!(session.apply_skill_upgrade(&project, &source, SkillLocation::Agents,
+        &preview.revision, &["SKILL.md".into()]), Err(Error::Conflict)));
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), EXISTING_MANIFEST.as_bytes());
+    assert!(session.skill_backups(&project).unwrap().is_empty());
+}
+
+#[test]
+fn skill_restore_blocks_external_edits_and_recovers_the_other_selected_files() {
+    let (_temp, root) = sandbox();
+    let (project, source, target) = upgrade_fixture(&root);
+    let session = with_vault(&root, MemoryVault::default());
+    let preview = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    let selection = ["SKILL.md".into(), "references/quick.md".into()];
+    let saved = session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision, &selection).unwrap();
+    let outdated = session.preview_skill_restore(&project, saved.id).unwrap();
+    write(&target, "references/quick.md", "external edit");
+    assert!(matches!(session.apply_skill_restore(&project, saved.id, &outdated.revision, &selection), Err(Error::Conflict)));
+    let current = session.preview_skill_restore(&project, saved.id).unwrap();
+    assert!(current.changes.iter().any(|change| change.path == "references/quick.md" && change.blocked));
+    assert!(matches!(session.apply_skill_restore(&project, saved.id, &current.revision, &selection), Err(Error::SkillEditSelection)));
+    session.apply_skill_restore(&project, saved.id, &current.revision, &["SKILL.md".into()]).unwrap();
+    assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), EXISTING_MANIFEST.as_bytes());
+    assert_eq!(fs::read(target.join("references/quick.md")).unwrap(), b"external edit");
+    assert_eq!(session.skill_backups(&project).unwrap().len(), 2);
+}
+
+#[test]
+fn missing_skill_backup_keys_stop_writes_without_resetting_the_shared_key() {
+    let (_temp, root) = sandbox();
+    let (project, source, target) = upgrade_fixture(&root);
+    let session = engine(&root);
+    let preview = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    assert!(matches!(session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision,
+        &["references/new/extra.txt".into()]), Err(Error::VaultUnavailable)));
+    assert!(!target.join("references/new").exists());
+    assert!(session.skill_backups(&project).unwrap().is_empty());
+
+    let vault = MemoryVault::default();
+    let session = with_vault(&root, vault.clone());
+    session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &preview.revision, &["SKILL.md".into()]).unwrap();
+    vault.remove("snapshot-encryption-v1").unwrap();
+    let next = session.preview_skill_upgrade(&project, &source, SkillLocation::Agents).unwrap();
+    assert!(matches!(session.apply_skill_upgrade(&project, &source, SkillLocation::Agents, &next.revision,
+        &["references/quick.md".into()]), Err(Error::VaultUnavailable)));
+    assert!(vault.get("snapshot-encryption-v1").unwrap().is_none());
+    assert_eq!(fs::read(target.join("references/quick.md")).unwrap(), b"old quick reference\r\n");
+    assert_eq!(session.skill_backups(&project).unwrap().len(), 1);
+}
 
 #[test]
 fn saves_a_project_baseline_and_tracks_manifest_drift_after_reopening() {

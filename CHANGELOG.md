@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.0
+
+- Preview a local upgrade of an existing project skill. Compare both versions of each changed file and explicitly select which files to apply.
+- Create an encrypted backup before each upgrade or restore. Preview recovery by project, keep files with newer edits, and undo an earlier restore from its own backup.
+- Cover partial upgrades, stale previews, byte-for-byte recovery, and write failures with temporary project fixtures. Exercise upgrade and restore with the native keychain in the release retest.
+
 ## 1.8.0
 
 - Connection diagnostics identify DNS, TLS and connection failures, HTTP status categories, interrupted or oversized bodies, invalid JSON, and model-list shape mismatches.

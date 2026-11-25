@@ -183,6 +183,11 @@ h1, h2, h3, p { margin: 0; }
 .skill-document summary { padding: 9px 10px; cursor: pointer; overflow-wrap: anywhere; }
 .skill-document summary small { color: var(--muted); }
 .skill-document pre { margin: 0; border-top: 1px solid var(--edge); padding: 10px; max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-edit .check-row, .skill-edit > p { padding: 8px 10px; }
+.skill-edit .check-row { flex-wrap: wrap; overflow-wrap: anywhere; }
+.skill-comparison { display: grid; gap: 8px; padding: 0 10px 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.skill-comparison > div { min-width: 0; border: 1px solid var(--edge); border-radius: 6px; }
+.skill-comparison small { display: block; padding: 6px 10px; color: var(--muted); }
 .skills-list { margin: 0; padding: 0 16px; list-style: none; border-top: 1px solid var(--edge); }
 .skill-row { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--edge); }
 .skill-row:last-child { border-bottom: 0; }

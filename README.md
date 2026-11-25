@@ -30,16 +30,16 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
 ```powershell
-Get-FileHash .\WhaleSwitch-1.8.0-windows-x64.exe -Algorithm SHA256
-Get-FileHash .\WhaleSwitch-1.8.0-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.9.0-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.9.0-windows-x64-portable.zip -Algorithm SHA256
 ```
 
 ```sh
 # macOS Apple Silicon
-shasum -a 256 -c WhaleSwitch-1.8.0-macos-arm64.dmg.sha256
+shasum -a 256 -c WhaleSwitch-1.9.0-macos-arm64.dmg.sha256
 
 # Ubuntu
-sha256sum -c WhaleSwitch-1.8.0-linux-x64.deb.sha256
+sha256sum -c WhaleSwitch-1.9.0-linux-x64.deb.sha256
 ```
 
 </details>
@@ -61,7 +61,8 @@ sha256sum -c WhaleSwitch-1.8.0-linux-x64.deb.sha256
 
 1. 打开 **项目技能**，用系统目录选择器指定项目。完整扫描后点 **保存基线**。
 2. 修改项目技能后刷新扫描，在 **基线变更** 中核对新增、修改和移除。基线仅比较 `SKILL.md` 的内容指纹。
-3. 在 **从本地导入** 选择目标技能位置，再选择含 `SKILL.md` 的来源目录。逐项展开原文并核对目标路径后，点击 **导入到项目**。遇到同名目标时选另一个位置。
+3. 在 **从本地导入** 选择目标技能位置和含 `SKILL.md` 的来源目录。新技能可在核对原文和路径后导入。已有技能可打开 **预览升级**，比较新旧内容，再勾选要应用的文件。
+4. 在同一页面的 **技能备份** 中选择一条记录，预览可恢复的文件。已被其他应用或后续操作改动的文件会标为冲突。升级和恢复都先创建加密备份。
 
 导入包含 `SKILL.md` 和 `references` 中受支持的 `.md`、`.txt`，其余附件计入跳过数量。导入前重验来源指纹，先写参考文档，最后写入口文件。 [技能规范](https://agentskills.io/specification)
 
@@ -84,7 +85,7 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 | 页面 | 可执行的操作 |
 | --- | --- |
 | 配置来源 | 查看编辑目标、相关环境变量设置状态和项目配置候选文件。项目读取为只读，仅返回状态与支持字段名。 |
-| 项目技能 | 检查 `.agents/skills`、`.claude/skills` 和 `.opencode/skills`。保存基线、查看变更、筛选路径，并在预览后导入本地技能。 |
+| 项目技能 | 检查 `.agents/skills`、`.claude/skills` 和 `.opencode/skills`。查看基线变更，逐文件导入、升级或恢复本地技能。 |
 | 配置档案 | 保存、重命名、复制、导出和导入档案。应用前预览差异，带清除动作的字段初始不勾选。 |
 | 配置方案 | 保存或导入跨工具的字段组合。一次预览所有目标，按需提交并查看每次执行的恢复入口。 |
 | 快照 | 手动创建、比较、按字段恢复和恢复整份文件。按字段恢复会保留当前文件中的其他字段和未知配置。语法损坏时可恢复整份文件。 |
@@ -96,7 +97,7 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 - 配置档案的 JSON 仅包含工具、名称与支持字段，保留显式清除值。换设备时可导入档案，再勾选需要迁移的字段。
 - 方案 JSON 包含版本、名称和每个工具的支持字段。密钥、本机配置路径及历史快照保存在本地。
 - 连接测试使用服务商签发的 API 密钥，仅在手动触发时发送一次请求。密钥按工具、协议及具体请求 URL 隔离。脱敏摘要只包含工具、协议、鉴权模式、阶段、结果、HTTP 状态、耗时、模型数量和建议等待时间。
-- 项目盘点读取固定候选文件。技能基线只保存项目路径的指纹、相对清单路径和内容指纹。技能原文在用户选择的导入目录中审阅。 [架构与安全](docs/ARCHITECTURE.md)
+- 项目盘点读取固定候选文件。技能基线只保存项目路径的指纹、相对清单路径和内容指纹。技能的升级和恢复备份保存在本地 SQLite，解密依赖系统安全存储。 [架构与安全](docs/ARCHITECTURE.md)
 
 ## 开发与贡献
 

@@ -1,5 +1,5 @@
 use super::{blocking, pick_project_folder};
-use crate::{Engine, Error, ProjectSkills, Result, SkillImportPreview, SkillLocation};
+use crate::{Engine, Error, ProjectSkills, Result, SkillBackup, SkillEditPreview, SkillImportPreview, SkillLocation};
 use std::{path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager};
 
@@ -69,5 +69,42 @@ pub(super) async fn apply_skill_import(app: AppHandle, root: String, location: S
     blocking(move || app.state::<SkillWorkspace>().with_project(&root, |selection| {
         let source = selection.source.as_deref().ok_or(Error::PathUnavailable)?;
         app.state::<Engine>().apply_skill_import(&selection.project, source, location, &revision)
+    })).await
+}
+
+#[tauri::command]
+pub(super) async fn preview_skill_upgrade(app: AppHandle, root: String, location: SkillLocation) -> Result<SkillEditPreview> {
+    blocking(move || app.state::<SkillWorkspace>().with_project(&root, |selection| {
+        let source = selection.source.as_deref().ok_or(Error::PathUnavailable)?;
+        app.state::<Engine>().preview_skill_upgrade(&selection.project, source, location)
+    })).await
+}
+
+#[tauri::command]
+pub(super) async fn apply_skill_upgrade(app: AppHandle, root: String, location: SkillLocation,
+    revision: String, selected: Vec<String>) -> Result<SkillBackup> {
+    blocking(move || app.state::<SkillWorkspace>().with_project(&root, |selection| {
+        let source = selection.source.as_deref().ok_or(Error::PathUnavailable)?;
+        app.state::<Engine>().apply_skill_upgrade(&selection.project, source, location, &revision, &selected)
+    })).await
+}
+
+#[tauri::command]
+pub(super) async fn skill_backups(app: AppHandle, root: String) -> Result<Vec<SkillBackup>> {
+    blocking(move || app.state::<SkillWorkspace>().with_project(&root,
+        |selection| app.state::<Engine>().skill_backups(&selection.project))).await
+}
+
+#[tauri::command]
+pub(super) async fn preview_skill_restore(app: AppHandle, root: String, id: i64) -> Result<SkillEditPreview> {
+    blocking(move || app.state::<SkillWorkspace>().with_project(&root,
+        |selection| app.state::<Engine>().preview_skill_restore(&selection.project, id))).await
+}
+
+#[tauri::command]
+pub(super) async fn apply_skill_restore(app: AppHandle, root: String, id: i64,
+    revision: String, selected: Vec<String>) -> Result<SkillBackup> {
+    blocking(move || app.state::<SkillWorkspace>().with_project(&root, |selection| {
+        app.state::<Engine>().apply_skill_restore(&selection.project, id, &revision, &selected)
     })).await
 }

@@ -51,7 +51,7 @@ fn encode(fingerprints: &SkillFingerprints) -> Result<String> {
     serde_json::to_string(fingerprints).map_err(|_| Error::SkillStorage)
 }
 
-fn project_key(root: &Path) -> Result<String> {
+pub(super) fn project_key(root: &Path) -> Result<String> {
     let canonical = root.canonicalize().map_err(|_| Error::Io)?;
     let label = canonical.to_str().ok_or(Error::UnsafePath)?;
     Ok(digest(label.as_bytes()))

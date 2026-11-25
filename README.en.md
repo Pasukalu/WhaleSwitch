@@ -41,7 +41,8 @@ Release notes identify each version's platform signing status and retest coverag
 
 1. Open **Project skills** and choose a project directory. Select **Save baseline** after a complete scan.
 2. Rescan after changing project skills. **Changes from baseline** lists added, modified, and removed `SKILL.md` files by content fingerprint.
-3. In **Import from local folder**, select a destination and choose a folder containing `SKILL.md`. Expand each listed file and check the project path before selecting **Import into project**. An existing destination stops the import.
+3. In **Import from local folder**, select a destination and choose a folder containing `SKILL.md`. Review file contents and paths before importing a new skill. For an existing skill, select **Preview upgrade**, compare the two versions, and select the files to apply.
+4. Open an entry in **Skill backups** on the same page to preview recovery. Files with newer edits are marked as conflicts. Each upgrade and restore first creates an encrypted backup.
 
 Imports include `SKILL.md` and supported `.md` and `.txt` files in `references`. The preview reports skipped attachments. WhaleSwitch rechecks the reviewed fingerprints and places the manifest after its references. [Agent Skills specification](https://agentskills.io/specification)
 
@@ -64,7 +65,7 @@ For OpenCode V1, WhaleSwitch also supports an absolute JSON or JSONC path in `OP
 | Workspace page | What it does |
 | --- | --- |
 | Config sources | Displays the edit target, path environment flags and read-only candidate files in a selected project. |
-| Project skills | Scans the three documented tool locations, compares against a local baseline, filters paths, and previews local imports. |
+| Project skills | Scans the three documented tool locations, compares against a local baseline, and previews local imports, upgrades, and restores. |
 | Profiles | Saves, renames, duplicates and transfers portable profiles. Applying a profile lets you select individual fields, with removals starting unchecked. |
 | Plans | Saves or imports a combination of tool settings, reviews and applies selected fields, and links each run to available backups. |
 | Snapshots | Captures and compares snapshots at the original tool and path. Restore selected fields, or restore a full file to recover from invalid syntax. |
