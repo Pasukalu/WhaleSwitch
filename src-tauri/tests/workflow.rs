@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fs, io::{BufRead, BufReader, Write}, net::TcpListener, path::PathBuf, sync::Mutex, thread};
 use tempfile::TempDir;
 use whaleswitch_lib::{ConfigObservation, Engine, Error, Field, Fields, ProbeInput, ProbeOutcome, ProbeStage, Protocol, Result, SecretStore, Tool};
+use whaleswitch_lib::{PlanArchive, PlanEntry, PlanSelection};
 use zeroize::Zeroizing;
 
 #[derive(Default)]
@@ -33,6 +34,156 @@ fn fixture(vault: impl SecretStore + 'static) -> Fixture {
 
 fn model(value: Option<&str>) -> Fields {
     [(Field::Model, value.map(str::to_owned))].into_iter().collect()
+}
+
+#[test]
+fn snapshot_cleanup_scopes_the_selection_and_keeps_pinned_recent_and_plan_backups() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Codex;
+    let original = b"model = 'original'\n";
+    fs::write(&f.files[0], original).unwrap();
+    fs::write(&f.files[1], r#"{"model":"sonnet"}"#).unwrap();
+    let start = f.engine.view(tool).unwrap();
+    let capture = |view: &whaleswitch_lib::View| f.engine.snapshot(view.tool, &view.path, &view.revision).unwrap().id;
+    let oldest = capture(&start);
+    let another_old = capture(&start);
+    let pinned = capture(&start);
+    let other_view = f.engine.view(Tool::Claude).unwrap();
+    let other_id = capture(&other_view);
+    assert_eq!(f.engine.pin_snapshot(tool, &start.path, other_id, true), Err(Error::SnapshotMissing));
+    f.engine.pin_snapshot(tool, &start.path, pinned, true).unwrap();
+    let plan = f.engine.import_plan(PlanArchive { version: 1, name: "private-fixture-name".into(),
+        entries: vec![PlanEntry { tool, fields: model(Some("new-model")) }] }, "private-fixture-name").unwrap();
+    let run = f.engine.apply_plan(plan.id, &[PlanSelection {
+        tool, path: start.path.clone(), revision: start.revision.clone(), fields: model(Some("new-model")),
+    }]).unwrap();
+    let plan_backup = run.files[0].snapshot_id.unwrap();
+    let live = f.engine.view(tool).unwrap();
+    let recent: Vec<i64> = (0..5).map(|_| capture(&live)).collect();
+    let before_cleanup = fs::read(&f.files[0]).unwrap();
+    let preview = f.engine.preview_snapshot_cleanup(tool, &live.path).unwrap();
+    assert_eq!(preview.keep_recent, 5);
+    assert_eq!(preview.protected, 7);
+    assert_eq!(preview.candidates.iter().map(|item| item.id).collect::<Vec<_>>(), [oldest, another_old]);
+    for id in [pinned, recent[0], plan_backup, other_id] {
+        assert!(matches!(
+            f.engine.apply_snapshot_cleanup(tool, &live.path, &preview.revision, &[oldest, id]),
+            Err(Error::SnapshotCleanupSelection)
+        ));
+    }
+    let result = f.engine.apply_snapshot_cleanup(tool, &live.path, &preview.revision, &[oldest]).unwrap();
+    assert_eq!(result.removed, 1);
+    assert_eq!(result.stored_bytes, preview.candidates[0].stored_bytes);
+    assert_eq!(fs::read(&f.files[0]).unwrap(), before_cleanup);
+    let remaining = f.engine.snapshots_for(tool, &live.path).unwrap();
+    assert!(!remaining.iter().any(|item| item.id == oldest));
+    assert!(remaining.iter().any(|item| item.id == pinned && item.pinned));
+    assert!(remaining.iter().any(|item| item.id == another_old));
+    assert_eq!(f.engine.snapshots(Tool::Claude).unwrap()[0].id, other_id);
+    assert!(capture(&live) > *recent.last().unwrap());
+    f.engine.restore(tool, &live.path, &live.revision, plan_backup).unwrap();
+    assert_eq!(fs::read(&f.files[0]).unwrap(), original);
+}
+
+#[test]
+fn snapshot_cleanup_rejects_changed_history_and_rolls_back_a_failed_database_transaction() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Codex;
+    fs::write(&f.files[0], "model = 'fixture'\n").unwrap();
+    let view = f.engine.view(tool).unwrap();
+    for _ in 0..7 { f.engine.snapshot(tool, &view.path, &view.revision).unwrap(); }
+    let prior = f.engine.preview_snapshot_cleanup(tool, &view.path).unwrap();
+    let first = prior.candidates[0].id;
+    let second = prior.candidates[1].id;
+    f.engine.pin_snapshot(tool, &view.path, first, true).unwrap();
+    assert!(matches!(
+        f.engine.apply_snapshot_cleanup(tool, &view.path, &prior.revision, &[first]),
+        Err(Error::Conflict)
+    ));
+    f.engine.pin_snapshot(tool, &view.path, first, false).unwrap();
+    f.engine.snapshot(tool, &view.path, &view.revision).unwrap();
+    assert!(matches!(
+        f.engine.apply_snapshot_cleanup(tool, &view.path, &prior.revision, &[first]),
+        Err(Error::Conflict)
+    ));
+    let fresh = f.engine.preview_snapshot_cleanup(tool, &view.path).unwrap();
+    assert!(matches!(
+        f.engine.apply_snapshot_cleanup(tool, &view.path, &fresh.revision, &[first, first]),
+        Err(Error::SnapshotCleanupSelection)
+    ));
+    let db = rusqlite::Connection::open(f.dir.path().join("data/snapshots.sqlite3")).unwrap();
+    db.execute_batch(&format!(
+        "CREATE TRIGGER stop_cleanup BEFORE DELETE ON snapshots WHEN OLD.id={second}
+         BEGIN SELECT RAISE(ABORT, 'fixture failure'); END"
+    )).unwrap();
+    assert!(matches!(
+        f.engine.apply_snapshot_cleanup(tool, &view.path, &fresh.revision, &[first, second]),
+        Err(Error::BackupFailed)
+    ));
+    assert_eq!(f.engine.snapshots(tool).unwrap().len(), 8);
+    assert_eq!(f.engine.preview_snapshot_cleanup(tool, &view.path).unwrap().revision, fresh.revision);
+}
+
+#[test]
+fn activity_export_contains_only_fixed_metadata_for_the_selected_tool() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Codex;
+    let original = "model = 'private-initial-value'\n# sk-private-fixture-marker\n";
+    fs::write(&f.files[0], original).unwrap();
+    fs::write(&f.files[1], r#"{"model":"sonnet"}"#).unwrap();
+    let initial = f.engine.view(tool).unwrap();
+    let other = f.engine.view(Tool::Claude).unwrap();
+    f.engine.snapshot(Tool::Claude, &other.path, &other.revision).unwrap();
+    let snapshot = f.engine.snapshot(tool, &initial.path, &initial.revision).unwrap();
+    let plan = f.engine.import_plan(PlanArchive { version: 1, name: "private-plan-title".into(),
+        entries: vec![PlanEntry { tool, fields: model(Some("private-plan-value")) }] }, "private-plan-title").unwrap();
+    let run = f.engine.apply_plan(plan.id, &[PlanSelection {
+        tool, path: initial.path, revision: initial.revision, fields: model(Some("private-plan-value")),
+    }]).unwrap();
+    let updated = f.engine.view(tool).unwrap();
+    f.engine.restore(tool, &updated.path, &updated.revision, snapshot.id).unwrap();
+
+    let path = f.dir.path().canonicalize().unwrap().join("history.json");
+    f.engine.export_config_activity(tool, &path).unwrap();
+    let raw = fs::read_to_string(&path).unwrap();
+    for private in [updated.path.as_str(), "private-initial-value", "sk-private-fixture-marker", "private-plan-title", "private-plan-value"] {
+        assert!(!raw.contains(private));
+    }
+    let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(json["version"], 1);
+    let entries = json["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 3);
+    for entry in entries {
+        assert_eq!(entry.as_object().unwrap().len(), 5);
+        assert_eq!(entry["tool"], "codex");
+        assert_eq!(entry["status"], "succeeded");
+        assert!(entry["timestamp"].is_u64());
+    }
+    let plan_entry = entries.iter().find(|entry| entry["action"] == "plan").unwrap();
+    assert_eq!(plan_entry["snapshot_id"].as_i64(), run.files[0].snapshot_id);
+    assert_eq!(f.engine.export_config_activity(tool, &path), Err(Error::Conflict));
+    assert_eq!(fs::read_to_string(&path).unwrap(), raw);
+}
+
+#[test]
+fn adds_history_tables_to_a_legacy_database_and_keeps_original_snapshots_readable() {
+    let f = fixture(TestVault::default());
+    let tool = Tool::Codex;
+    let content = "model = 'old'\n# preserve my comment\n";
+    fs::write(&f.files[0], content).unwrap();
+    let initial = f.engine.view(tool).unwrap();
+    let snapshot = f.engine.snapshot(tool, &initial.path, &initial.revision).unwrap();
+    let db = rusqlite::Connection::open(f.dir.path().join("data/snapshots.sqlite3")).unwrap();
+    db.execute_batch("DROP TABLE config_activity; DROP TABLE snapshot_pins").unwrap();
+    drop(db);
+    let old = f.engine.snapshots(tool).unwrap();
+    assert_eq!(old[0].id, snapshot.id);
+    assert_eq!(old[0].stored_bytes, snapshot.stored_bytes);
+    assert!(!old[0].pinned);
+    assert!(f.engine.config_activity(tool).unwrap().is_empty());
+    let updated = f.engine.save(tool, &initial.path, &initial.revision, &model(Some("new"))).unwrap();
+    f.engine.restore(tool, &updated.path, &updated.revision, snapshot.id).unwrap();
+    assert_eq!(fs::read_to_string(&f.files[0]).unwrap(), content);
 }
 
 #[test]

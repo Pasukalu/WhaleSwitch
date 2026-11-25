@@ -7,6 +7,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
+mod config_history;
 mod project_skills;
 
 #[derive(Deserialize)]
@@ -278,6 +279,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             discover, runtime_info, view, inspect_config, preview, save, snapshot, snapshots, compare_snapshot, restore,
             compare_snapshot_fields, restore_snapshot_fields,
+            config_history::pin_snapshot, config_history::preview_snapshot_cleanup, config_history::apply_snapshot_cleanup,
+            config_history::config_activity, config_history::export_config_activity,
             profiles, create_profile, preview_profile, apply_profile, delete_profile, rename_profile, duplicate_profile,
             import_archive, export_archive, read_profile_archive, import_profile, export_profile_archive,
             plans, create_plan, delete_plan, read_plan_archive, import_plan, export_plan, preview_plan, apply_plan, plan_runs,

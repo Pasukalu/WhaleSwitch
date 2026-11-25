@@ -1,5 +1,6 @@
 import { FIELD_ORDER, TOOLS } from "./domain.ts";
 import type { Change, ConfigInspection, ConfigPlan, Fields, PlanFileResult, PlanPreview, PlanProfile, PlanRun, PlanSelection, Profile, Snapshot, Target, Tool, View } from "./domain.ts";
+import type { ActivityAction, ConfigActivity, SnapshotCleanupPreview, SnapshotCleanupResult } from "./domain.ts";
 
 const views: Record<Tool, View> = {
   codex: { tool: "codex", path: "~/.codex/config.toml", format: "toml", exists: true, issue: null, revision: "4e71bb19", fields: {
@@ -11,6 +12,7 @@ const views: Record<Tool, View> = {
 };
 type DemoSnapshot = Snapshot & { view: View };
 const history: Record<Tool, DemoSnapshot[]> = { codex: [], claude: [], opencode: [] };
+const activity: Record<Tool, ConfigActivity[]> = { codex: [], claude: [], opencode: [] };
 const profiles: Record<Tool, Profile[]> = { codex: [], claude: [], opencode: [] };
 let plans: ConfigPlan[] = [];
 const planRuns: PlanRun[] = [];
@@ -22,18 +24,40 @@ function changes(current: Fields, next: Fields): Change[] {
   }));
 }
 
-function add(view: View, reason: Snapshot["reason"]): Snapshot {
-  const entry = { id: ++version, timestamp: Date.now(), reason, view: structuredClone(view) };
+function add(view: View, reason: Snapshot["reason"]): DemoSnapshot {
+  const stored_bytes = new TextEncoder().encode(JSON.stringify(view.fields)).length + 16;
+  const entry = { id: ++version, timestamp: Date.now(), reason, view: structuredClone(view), pinned: false, stored_bytes };
   history[view.tool].unshift(entry);
   return entry;
 }
 
+function record(tool: Tool, action: ActivityAction, snapshot_id: number | null = null) {
+  activity[tool].unshift({ tool, timestamp: Date.now(), action, status: "succeeded", snapshot_id });
+  activity[tool].splice(100);
+}
+
 function save(view: View, patch: Fields, reason: Snapshot["reason"] = "before_save"): View {
   if (!changes(view.fields, patch).length) return view;
-  if (view.exists) add(view, reason);
+  const backup = view.exists ? add(view, reason).id : null;
   const saved = { ...view, exists: true, fields: { ...view.fields, ...patch }, revision: (version++).toString(16) };
   views[view.tool] = saved;
+  const action = reason === "before_plan" ? "plan" : reason === "before_restore_fields" ? "restore_fields" : "save";
+  record(view.tool, action, backup);
   return saved;
+}
+
+function cleanupPreview(tool: Tool): SnapshotCleanupPreview {
+  const snapshots = history[tool];
+  const keep_recent = 5;
+  const eligible = snapshots.slice(keep_recent).filter((item) => !item.pinned && item.reason !== "before_plan");
+  return {
+    revision: JSON.stringify([tool, snapshots.map(({ id, pinned }) => [id, pinned])]),
+    keep_recent,
+    protected: snapshots.length - eligible.length,
+    eligible: eligible.length,
+    candidates: eligible.reverse().slice(0, 50).map(({ id, timestamp, reason, pinned, stored_bytes }) =>
+      ({ id, timestamp, reason, pinned, stored_bytes })),
+  };
 }
 
 function draftName(input: unknown, error: string) {
@@ -73,6 +97,31 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
     case "snapshots":
       if (args.path !== undefined && args.path !== view.path) throw "conflict";
       result = history[tool];
+      break;
+    case "pin_snapshot":
+      if (args.path !== view.path) throw "conflict";
+      if (!selected) throw "snapshot_missing";
+      selected.pinned = args.pinned === true;
+      break;
+    case "preview_snapshot_cleanup":
+      if (args.path !== view.path) throw "conflict";
+      result = cleanupPreview(tool);
+      break;
+    case "apply_snapshot_cleanup": {
+      if (args.path !== view.path) throw "conflict";
+      const review = cleanupPreview(tool);
+      if (args.revision !== review.revision) throw "conflict";
+      const ids = args.selected as number[] | undefined;
+      if (!ids?.length || new Set(ids).size !== ids.length) throw "snapshot_cleanup_selection";
+      const candidates = review.candidates.filter((item) => ids.includes(item.id));
+      if (candidates.length !== ids.length) throw "snapshot_cleanup_selection";
+      history[tool] = history[tool].filter((item) => !ids.includes(item.id));
+      record(tool, "cleanup");
+      result = { removed: ids.length, stored_bytes: candidates.reduce((sum, item) => sum + item.stored_bytes, 0) } satisfies SnapshotCleanupResult;
+      break;
+    }
+    case "config_activity":
+      result = activity[tool];
       break;
     case "preview": result = changes(view.fields, patch ?? {}); break;
     case "save": result = save(view, patch ?? {}); break;
@@ -163,10 +212,13 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       result = run;
       break;
     }
-    case "snapshot":
+    case "snapshot": {
       if (!view.exists) throw "snapshot_missing";
-      result = add(view, "manual");
+      const captured = add(view, "manual");
+      record(tool, "snapshot", captured.id);
+      result = captured;
       break;
+    }
     case "compare_snapshot":
     case "compare_snapshot_fields":
       if (!selected) throw "snapshot_missing";
@@ -183,12 +235,14 @@ export async function demo<T>(command: string, args: Record<string, unknown>): P
       result = save(view, selection, "before_restore_fields");
       break;
     }
-    case "restore":
+    case "restore": {
       if (!selected) throw "snapshot_missing";
-      if (view.exists) add(view, "before_restore");
+      const backup = view.exists ? add(view, "before_restore").id : null;
       views[tool] = { ...selected.view, revision: (version++).toString(16) };
+      record(tool, "restore_file", backup);
       result = views[tool];
       break;
+    }
     case "has_key": result = false; break;
     default: throw "preview_only";
   }

@@ -116,6 +116,27 @@ fn native_release_roundtrip() {
     let restore = engine.preview_skill_restore(&project, saved.id).unwrap();
     engine.apply_skill_restore(&project, saved.id, &restore.revision, &selected).unwrap();
     assert_eq!(fs::read(target.join("SKILL.md")).unwrap(), original);
+
+    let tool = Tool::Codex;
+    let current = engine.view(tool).unwrap();
+    let bytes = fs::read(&files[0]).unwrap();
+    let older = engine.snapshot(tool, &current.path, &current.revision).unwrap();
+    engine.pin_snapshot(tool, &current.path, older.id, true).unwrap();
+    let removable = engine.snapshot(tool, &current.path, &current.revision).unwrap();
+    for _ in 0..5 {
+        engine.snapshot(tool, &current.path, &current.revision).unwrap();
+    }
+    let preview = engine.preview_snapshot_cleanup(tool, &current.path).unwrap();
+    assert!(!preview.candidates.iter().any(|item| item.id == older.id));
+    let cleanup = engine.apply_snapshot_cleanup(tool, &current.path, &preview.revision, &[removable.id]).unwrap();
+    assert_eq!(cleanup.removed, 1);
+    assert_eq!(fs::read(&files[0]).unwrap(), bytes);
+    let snapshots = engine.snapshots(tool).unwrap();
+    assert!(snapshots.iter().any(|item| item.id == older.id && item.pinned));
+    assert!(!snapshots.iter().any(|item| item.id == removable.id));
+    let activity = engine.config_activity(tool).unwrap();
+    assert!(activity.iter().any(|event| matches!(&event.action, crate::ActivityAction::Cleanup)
+        && matches!(&event.status, crate::ActivityStatus::Succeeded)));
     drop(engine);
     assert!(SystemVault.get(&format!("{prefix}-snapshot-encryption-v1")).unwrap().is_none());
 }

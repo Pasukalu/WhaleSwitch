@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { demo } from "./demo";
 import type { Change, ConfigInspection, ConfigPlan, Fields, PlanArchive, PlanPreview, PlanProfile, PlanRun, PlanSelection, ProbeInput, ProbeResult, Profile, ProfileArchive, ProfilePreview, ProjectConfigReport, ProjectSkillsReport, RuntimeInfo, SkillBackup, SkillEditPreview, SkillImportPreview, SkillLocation, Snapshot, Target, Tool, ToolInfo, View } from "./domain";
+import type { ConfigActivity, SnapshotCleanupPreview, SnapshotCleanupResult } from "./domain";
 
 export const previewMode = !isTauri();
 export async function onNativeWindowFocus(onFocus: () => void): Promise<() => void> {
@@ -35,6 +36,12 @@ export const api = {
   save: (target: Target, patch: Fields) => request<View>("save", { target, patch }),
   snapshots: (tool: Tool, path: string) => request<Snapshot[]>("snapshots", { tool, path }),
   snapshot: (target: Target) => request<Snapshot>("snapshot", { target }),
+  pinSnapshot: (tool: Tool, path: string, id: number, pinned: boolean) => request<void>("pin_snapshot", { tool, path, id, pinned }),
+  previewSnapshotCleanup: (tool: Tool, path: string) => request<SnapshotCleanupPreview>("preview_snapshot_cleanup", { tool, path }),
+  applySnapshotCleanup: (tool: Tool, path: string, revision: string, selected: number[]) =>
+    request<SnapshotCleanupResult>("apply_snapshot_cleanup", { tool, path, revision, selected }),
+  configActivity: (tool: Tool) => request<ConfigActivity[]>("config_activity", { tool }),
+  exportConfigActivity: (tool: Tool) => request<void>("export_config_activity", { tool }),
   profiles: (tool: Tool) => request<Profile[]>("profiles", { tool }),
   createProfile: (target: Target, name: string, patch: Fields) => request<Profile>("create_profile", { target, name, patch }),
   previewProfile: (target: Target, id: number) => request<ProfilePreview>("preview_profile", { target, id }),

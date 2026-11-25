@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+- Pin configuration snapshots and inspect their encrypted payload size. Preview and explicitly select older snapshots to remove. Cleanup preserves the newest five at each target, pinned snapshots, and plan backups.
+- Review local configuration activity by tool and export a metadata-only JSON report. Existing plan runs contribute per-tool results without exposing their names or settings.
+- Add regression coverage for existing databases, stale cleanup previews, transaction rollback, and export privacy. The native release roundtrip exercises pinned and selected snapshots.
+
 ## 1.9.0
 
 - Preview a local upgrade of an existing project skill. Compare both versions of each changed file and explicitly select which files to apply.

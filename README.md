@@ -30,16 +30,16 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
 ```powershell
-Get-FileHash .\WhaleSwitch-1.9.0-windows-x64.exe -Algorithm SHA256
-Get-FileHash .\WhaleSwitch-1.9.0-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.10.0-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.10.0-windows-x64-portable.zip -Algorithm SHA256
 ```
 
 ```sh
 # macOS Apple Silicon
-shasum -a 256 -c WhaleSwitch-1.9.0-macos-arm64.dmg.sha256
+shasum -a 256 -c WhaleSwitch-1.10.0-macos-arm64.dmg.sha256
 
 # Ubuntu
-sha256sum -c WhaleSwitch-1.9.0-linux-x64.deb.sha256
+sha256sum -c WhaleSwitch-1.10.0-linux-x64.deb.sha256
 ```
 
 </details>
@@ -56,6 +56,14 @@ sha256sum -c WhaleSwitch-1.9.0-linux-x64.deb.sha256
 1. 在 **配置档案** 保存各工具的常用设置，再到 **配置方案** 选择最多三个工具的档案并保存方案。也可以导入方案 JSON。
 2. 打开 **预览方案**，核对每种工具的本地目标路径并勾选字段。清除字段需主动勾选。有外部变更时重新预览。
 3. 选择 **应用所选字段**。替换第一个文件之前，应用会验证所有待写的已有文件的加密快照。出现失败或进程中断时，可在 **最近执行** 核对逐工具状态和可用快照。
+
+### 管理快照与操作记录
+
+1. 选中工具后打开 **快照**。用图钉固定关键版本，列表会显示快照的编号、时间和加密数据量。
+2. 点 **预览清理**，逐项勾选要永久移除的旧快照。当前配置目标最近五份、固定的快照和方案执行前的备份会保留。每次最多审阅 50 个候选。
+3. 在 **本地操作记录** 查看当前工具的写入、恢复与方案结果。**导出记录**保存 JSON，条目仅包含时间、工具、动作、结果和关联的快照编号。
+
+快照清理回收 SQLite 内部可复用空间。显示的数据量是加密内容大小。
 
 ### 跟踪项目技能
 
@@ -88,7 +96,7 @@ OpenCode V1 可通过 `OPENCODE_CONFIG` 指定绝对 JSON 或 JSONC 路径。存
 | 项目技能 | 检查 `.agents/skills`、`.claude/skills` 和 `.opencode/skills`。查看基线变更，逐文件导入、升级或恢复本地技能。 |
 | 配置档案 | 保存、重命名、复制、导出和导入档案。应用前预览差异，带清除动作的字段初始不勾选。 |
 | 配置方案 | 保存或导入跨工具的字段组合。一次预览所有目标，按需提交并查看每次执行的恢复入口。 |
-| 快照 | 手动创建、比较、按字段恢复和恢复整份文件。按字段恢复会保留当前文件中的其他字段和未知配置。语法损坏时可恢复整份文件。 |
+| 快照 | 创建、比较、固定和恢复历史版本。预览清理范围，并导出当前工具的本地操作记录。 |
 | 连接测试 | 对 OpenAI 兼容或 Anthropic 端点手动发起模型列表请求，区分 DNS、TLS、HTTP 与响应体故障，并生成可分享摘要。 |
 
 ## 数据与密钥

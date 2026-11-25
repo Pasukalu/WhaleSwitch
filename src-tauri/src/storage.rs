@@ -6,8 +6,13 @@ use serde::Serialize;
 use std::{fs::{self, File, OpenOptions}, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use zeroize::Zeroizing;
 
+mod config_activity;
 mod skill_backups;
+mod snapshot_cleanup;
+pub use config_activity::{ActivityAction, ActivityStatus, ConfigActivity};
+pub(crate) use config_activity::ACTIVITY_LIMIT;
 pub use skill_backups::SkillBackup;
+pub use snapshot_cleanup::{SnapshotCleanupPreview, SnapshotCleanupResult};
 
 #[cfg(test)]
 mod native_test;
@@ -49,6 +54,8 @@ pub struct Snapshot {
     pub id: i64,
     pub timestamp: u64,
     pub reason: String,
+    pub pinned: bool,
+    pub stored_bytes: u64,
 }
 
 pub struct Storage {
@@ -83,12 +90,20 @@ impl Storage {
         let db = Connection::open(self.dir.join("snapshots.sqlite3")).map_err(|_| Error::BackupFailed)?;
         db.busy_timeout(std::time::Duration::from_secs(4)).map_err(|_| Error::BackupFailed)?;
         db.execute_batch("PRAGMA synchronous=FULL;
+            PRAGMA foreign_keys=ON;
             CREATE TABLE IF NOT EXISTS snapshots (
               id INTEGER PRIMARY KEY, tool TEXT NOT NULL, path TEXT NOT NULL,
               timestamp INTEGER NOT NULL, reason TEXT NOT NULL,
               nonce BLOB NOT NULL, sealed BLOB NOT NULL
             );
             CREATE INDEX IF NOT EXISTS snapshot_target ON snapshots(tool, path, id);
+            CREATE TABLE IF NOT EXISTS snapshot_pins (
+              snapshot_id INTEGER PRIMARY KEY REFERENCES snapshots(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS config_activity (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT NOT NULL, event TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS config_activity_tool ON config_activity(tool, id);
             CREATE TABLE IF NOT EXISTS profiles (
               id INTEGER PRIMARY KEY AUTOINCREMENT, tool TEXT NOT NULL,
               name TEXT NOT NULL COLLATE NOCASE, timestamp INTEGER NOT NULL, fields TEXT NOT NULL,
@@ -149,24 +164,19 @@ impl Storage {
         let aad = associated(tool, target);
         let sealed = cipher.encrypt(XNonce::from_slice(&nonce), Payload { msg: bytes, aad: aad.as_bytes() })
             .map_err(|_| Error::BackupFailed)?;
+        let stored_bytes = sealed.len() as u64;
         db.execute("INSERT INTO snapshots(tool,path,timestamp,reason,nonce,sealed) VALUES(?1,?2,?3,?4,?5,?6)",
             params![tool.id(), target, timestamp, reason, nonce.as_slice(), sealed]).map_err(|_| Error::BackupFailed)?;
         let id = db.last_insert_rowid();
         drop(db);
         if self.get(vault, tool, path, id)?.as_slice() != bytes { return Err(Error::BackupFailed); }
-        Ok(Snapshot { id, timestamp, reason: reason.into() })
+        Ok(Snapshot { id, timestamp, reason: reason.into(), pinned: false, stored_bytes })
     }
 
     pub fn list(&self, tool: Tool, path: &Path) -> Result<Vec<Snapshot>> {
         if !self.exists() { return Ok(Vec::new()); }
         let target = path.to_str().ok_or(Error::UnsafePath)?;
-        let db = self.db()?;
-        let mut statement = db.prepare("SELECT id,timestamp,reason FROM snapshots WHERE tool=?1 AND path=?2 ORDER BY id DESC")
-            .map_err(|_| Error::BackupFailed)?;
-        let rows = statement.query_map(params![tool.id(), target], |r| Ok(Snapshot {
-            id: r.get(0)?, timestamp: r.get(1)?, reason: r.get(2)?,
-        })).map_err(|_| Error::BackupFailed)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|_| Error::BackupFailed)
+        list_snapshots(&self.db()?, tool, target)
     }
 
     pub fn get(&self, vault: &dyn SecretStore, tool: Tool, path: &Path, id: i64) -> Result<Zeroizing<Vec<u8>>> {
@@ -184,6 +194,22 @@ impl Storage {
         cipher.decrypt(XNonce::from_slice(&nonce), Payload { msg: &sealed, aad: aad.as_bytes() })
             .map(Zeroizing::new).map_err(|_| Error::BackupFailed)
     }
+}
+
+fn list_snapshots(db: &Connection, tool: Tool, target: &str) -> Result<Vec<Snapshot>> {
+    let mut statement = db.prepare(
+        "SELECT s.id,s.timestamp,s.reason,p.snapshot_id IS NOT NULL,length(s.sealed)
+         FROM snapshots s LEFT JOIN snapshot_pins p ON p.snapshot_id=s.id
+         WHERE s.tool=?1 AND s.path=?2 ORDER BY s.id DESC",
+    ).map_err(|_| Error::BackupFailed)?;
+    let rows = statement.query_map(params![tool.id(), target], |row| Ok(Snapshot {
+        id: row.get(0)?,
+        timestamp: row.get(1)?,
+        reason: row.get(2)?,
+        pinned: row.get(3)?,
+        stored_bytes: row.get(4)?,
+    })).map_err(|_| Error::BackupFailed)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|_| Error::BackupFailed)
 }
 
 fn associated(tool: Tool, path: &str) -> String { format!("WhaleSwitch snapshot v1\0{}\0{path}", tool.id()) }

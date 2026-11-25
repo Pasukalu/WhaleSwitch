@@ -12,6 +12,7 @@ import { DiffDialog } from "./components/diff-dialog";
 import { Plans } from "./components/plans";
 import { Profiles, type ProfileEdit } from "./components/profiles";
 import { ProjectSkills } from "./components/project-skills";
+import { SnapshotsPanel } from "./components/snapshots";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { acceptConfig, describeDrift, emptyConfigSession, mergeDraft, observeConfig, observedIssue, observedPath, observedView } from "./config-session";
@@ -508,26 +509,9 @@ export function App() {
                   onRemove={(profile) => void run(() => removeProfile(profile))} onEdit={editProfile}
                   canTransfer={!previewMode} onPickArchive={pickProfileArchive} onImport={importProfile}
                   onExport={(profile) => void run(() => exportProfile(profile))}/>
-                : tab === "snapshots" ? <section className="panel">
-                  <div className="panel-head spread"><div className="head-label"><div className="section-icon"><History size={19}/></div><div><h2>{t.snapshots}</h2><p>{t.safeStorage}</p></div></div>
-                    <Button variant="outline" size="sm" disabled={configLocked || !view?.exists || Boolean(view.issue)} onClick={() => void run(capture)}><Plus/>{t.createSnapshot}</Button>
-                  </div>
-                  {snapshotFocus !== null && !historyLoading && !historyProblem && !snapshots.some(({ id }) => id === snapshotFocus) &&
-                    <div className="panel-body"><p className="inline-message" role="status">{t.planSnapshotUnavailable} #{snapshotFocus}</p></div>}
-                  {historyLoading ? <div className="panel-body small muted" role="status">{t.loading}</div>
-                    : historyProblem ? <div className="panel-body"><div className="inline-message error" role="alert"><CircleAlert size={17}/>{errorText(historyProblem, language)}</div></div>
-                    : snapshots.length === 0 ? <Empty icon={<Layers size={23}/>} title={t.noSnapshots} subtitle={t.snapHint}/>
-                    : <div className="snapshot-list">{snapshots.map((snapshot) => <div className="snapshot-row" key={snapshot.id}
-                      id={`snapshot-${snapshot.id}`} tabIndex={snapshot.id === snapshotFocus ? -1 : undefined}>
-                      <div className="snapshot-icon"><Layers size={18}/></div><div className="snapshot-text"><strong>{t[snapshot.reason]}</strong><small>{date(snapshot, language)} · #{snapshot.id}</small></div>
-                      <div className="row-actions snapshot-actions">
-                        <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "compare"))}>{t.compare}</Button>
-                        <Button variant="ghost" size="sm" disabled={configLocked || !view} onClick={() => void run(() => compare(snapshot.id, "restore"))}>{t.restore}</Button>
-                        <Button variant="outline" size="sm" disabled={configLocked || !view || Boolean(view.issue)}
-                          onClick={() => void run(() => compare(snapshot.id, "restore_fields"))}>{t.restoreFields}</Button>
-                      </div>
-                    </div>)}</div>}
-                </section>
+                : tab === "snapshots" ? <SnapshotsPanel key={JSON.stringify([tool, viewPath])} t={t} language={language} tool={tool}
+                  view={view} snapshots={snapshots} focus={snapshotFocus} loading={historyLoading} problem={historyProblem} busy={configLocked}
+                  onTask={run} onCapture={capture} onCompare={compare} onRefresh={refreshHistory} onNotice={success}/>
                 : !view || view.issue ? <section className="panel">
                   <Empty icon={<CircleAlert size={23}/>} title={t.unavailable} subtitle={errorText(baselineIssue, language)}/>
                   <div className="panel-footer"><Button variant="outline" disabled={controlsBusy} onClick={reload}><RefreshCw/>{t.reload}</Button></div>

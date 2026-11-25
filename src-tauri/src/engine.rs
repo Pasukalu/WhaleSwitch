@@ -1,4 +1,4 @@
-use crate::{storage::{SecretStore, Snapshot, Storage, SystemVault}, Error, Field, Fields, Format, Result, Tool, ToolInfo};
+use crate::{storage::{SecretStore, Snapshot, Storage, SystemVault}, ActivityAction, Error, Field, Fields, Format, Result, Tool, ToolInfo};
 use crate::sources::{ConfigInspection, ConfigObservation};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -6,6 +6,7 @@ use std::{fs::{self, File, Permissions}, io::{Read, Write}, path::{Path, PathBuf
 use zeroize::Zeroizing;
 use crate::{Profile, ProfileArchive, ProfilePreview};
 
+mod config_history;
 mod plan_apply;
 mod project_skills;
 mod skill_import;
@@ -236,7 +237,11 @@ impl Engine {
         let format = tool.format(&path);
         tool.read(format, state.text(format)?)?;
         let bytes = state.bytes.ok_or(Error::SnapshotMissing)?;
-        self.storage.insert(self.vault.as_ref(), tool, &path, "manual", &bytes)
+        self.record_config_activity(tool, ActivityAction::Snapshot, |snapshot_id| {
+            let snapshot = self.storage.insert(self.vault.as_ref(), tool, &path, "manual", &bytes)?;
+            *snapshot_id = Some(snapshot.id);
+            Ok(snapshot)
+        })
     }
 
     pub fn compare_snapshot(&self, tool: Tool, target: &str, revision: &str, id: i64) -> Result<Vec<Change>> {
@@ -330,28 +335,36 @@ impl Engine {
     fn commit_with_sync(&self, tool: Tool, path: &Path, state: &FileState, bytes: &[u8], reason: &str,
         sync: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
         if bytes.len() as u64 > MAX_CONFIG { return Err(Error::FileTooLarge); }
-        if let Some(previous) = &state.bytes {
-            self.storage.insert(self.vault.as_ref(), tool, path, reason, previous)?;
-        }
-        let parent = path.parent().ok_or(Error::UnsafePath)?;
-        fs::create_dir_all(parent).map_err(|_| Error::WriteFailed)?;
-        validate_ancestors(path)?;
-        let revision = state.revision();
-        if read_state(path, MAX_CONFIG)?.revision() != revision { return Err(Error::Conflict); }
-        let stage = stage_file(path, bytes, state.permissions.as_ref())?;
-        if self.target(tool)?.as_path() != path || read_state(path, MAX_CONFIG)?.revision() != revision { return Err(Error::Conflict); }
-        persist(stage, path, state.bytes.is_some())?;
-        let verified = || read_state(path, MAX_CONFIG).is_ok_and(|fresh| fresh.bytes.is_some_and(|b| b.as_slice() == bytes));
-        if (verified() || verified()) && sync(path).is_ok() { return Ok(()); }
-        if let Some(previous) = &state.bytes {
-            if let Ok(recovery) = stage_file(path, previous, state.permissions.as_ref()) {
-                if verified() && persist(recovery, path, true).is_ok() && sync_parent(path).is_ok()
-                    && read_state(path, MAX_CONFIG).is_ok_and(|restored| restored.revision() == revision) {
-                    return Err(Error::RolledBack);
+        let action = match reason {
+            "before_restore" => ActivityAction::RestoreFile,
+            "before_restore_fields" => ActivityAction::RestoreFields,
+            _ => ActivityAction::Save,
+        };
+        self.record_config_activity(tool, action, |snapshot_id| {
+            if let Some(previous) = &state.bytes {
+                let snapshot = self.storage.insert(self.vault.as_ref(), tool, path, reason, previous)?;
+                *snapshot_id = Some(snapshot.id);
+            }
+            let parent = path.parent().ok_or(Error::UnsafePath)?;
+            fs::create_dir_all(parent).map_err(|_| Error::WriteFailed)?;
+            validate_ancestors(path)?;
+            let revision = state.revision();
+            if read_state(path, MAX_CONFIG)?.revision() != revision { return Err(Error::Conflict); }
+            let stage = stage_file(path, bytes, state.permissions.as_ref())?;
+            if self.target(tool)?.as_path() != path || read_state(path, MAX_CONFIG)?.revision() != revision { return Err(Error::Conflict); }
+            persist(stage, path, state.bytes.is_some())?;
+            let verified = || read_state(path, MAX_CONFIG).is_ok_and(|fresh| fresh.bytes.is_some_and(|b| b.as_slice() == bytes));
+            if (verified() || verified()) && sync(path).is_ok() { return Ok(()); }
+            if let Some(previous) = &state.bytes {
+                if let Ok(recovery) = stage_file(path, previous, state.permissions.as_ref()) {
+                    if verified() && persist(recovery, path, true).is_ok() && sync_parent(path).is_ok()
+                        && read_state(path, MAX_CONFIG).is_ok_and(|restored| restored.revision() == revision) {
+                        return Err(Error::RolledBack);
+                    }
                 }
             }
-        }
-        Err(Error::RecoveryRequired)
+            Err(Error::RecoveryRequired)
+        })
     }
 }
 
@@ -548,6 +561,9 @@ mod tests {
         });
         assert_eq!(result, Err(Error::RolledBack));
         assert_eq!(fs::read(path).unwrap(), original.as_slice());
+        let activity = engine.config_activity(Tool::Codex).unwrap();
+        assert!(matches!(&activity[0].status, crate::ActivityStatus::RolledBack));
+        assert_eq!(activity[0].snapshot_id, Some(engine.snapshots(Tool::Codex).unwrap()[0].id));
     }
 
     #[test]

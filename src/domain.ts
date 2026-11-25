@@ -26,7 +26,17 @@ export type ProjectConfigSource = {
 export type ProjectConfigReport = { root: string; sources: ProjectConfigSource[] };
 export type ToolInfo = { tool: Tool; installed: boolean; executable: string | null; path: string | null; exists: boolean; issue: string | null };
 export type Change = { field: Field; before: string | null; after: string | null };
-export type Snapshot = { id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" | "before_restore_fields" | "before_plan" };
+export type Snapshot = {
+  id: number; timestamp: number; reason: "manual" | "before_save" | "before_restore" | "before_restore_fields" | "before_plan";
+  pinned: boolean; stored_bytes: number;
+};
+export type SnapshotCleanupPreview = {
+  revision: string; keep_recent: number; protected: number; eligible: number; candidates: Snapshot[];
+};
+export type SnapshotCleanupResult = { removed: number; stored_bytes: number };
+export type ActivityAction = "save" | "snapshot" | "restore_file" | "restore_fields" | "cleanup" | "plan";
+export type ActivityStatus = "unconfirmed" | "succeeded" | "failed" | "rolled_back" | "recovery_required" | "unchanged" | "skipped";
+export type ConfigActivity = { timestamp: number; tool: Tool; action: ActivityAction; status: ActivityStatus; snapshot_id: number | null };
 export type RuntimeInfo = { portable: boolean; data_dir: string };
 export type Profile = { id: number; name: string; timestamp: number; fields: Fields };
 export type ProfileArchive = { version: 1; tool: Tool; name: string; fields: Fields };

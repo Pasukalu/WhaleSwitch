@@ -37,6 +37,14 @@ Release notes identify each version's platform signing status and retest coverag
 2. Choose **Preview plan** and check each local target path. Select the fields to apply and opt in to any removals. Preview again if a file changes.
 3. Choose **Apply selected fields**. WhaleSwitch verifies an encrypted backup of every selected existing file before replacing the first file. Use **Recent runs** to check per-tool results and available recovery snapshots after a failure or interruption.
 
+### Manage snapshots and activity
+
+1. Select a tool and open **Snapshots**. Pin important versions and check each snapshot's number, date, and encrypted payload size.
+2. Select **Preview cleanup** and check the older snapshots to remove permanently. The newest five snapshots for the current target, pinned snapshots, and pre-plan backups are kept. Each preview includes up to 50 candidates.
+3. Open **Local activity** to review writes, restores, and plan results for the selected tool. **Export activity** saves JSON entries containing only the timestamp, tool, action, result, and associated snapshot number.
+
+Cleanup makes space available for reuse inside SQLite. Listed sizes measure encrypted payloads.
+
 ### Track project skills
 
 1. Open **Project skills** and choose a project directory. Select **Save baseline** after a complete scan.
@@ -68,7 +76,7 @@ For OpenCode V1, WhaleSwitch also supports an absolute JSON or JSONC path in `OP
 | Project skills | Scans the three documented tool locations, compares against a local baseline, and previews local imports, upgrades, and restores. |
 | Profiles | Saves, renames, duplicates and transfers portable profiles. Applying a profile lets you select individual fields, with removals starting unchecked. |
 | Plans | Saves or imports a combination of tool settings, reviews and applies selected fields, and links each run to available backups. |
-| Snapshots | Captures and compares snapshots at the original tool and path. Restore selected fields, or restore a full file to recover from invalid syntax. |
+| Snapshots | Captures, compares, pins, and restores versions at the original tool and path. Previews cleanup and exports local activity metadata. |
 | Connection test | Diagnoses DNS, TLS, HTTP, and response failures for an explicitly selected Models endpoint and provides a shareable summary. |
 
 ## Local storage

@@ -22,7 +22,10 @@ pub use probe::{ProbeInput, ProbeOutcome, ProbeResult, ProbeStage, Protocol};
 pub use profiles::{Profile, ProfileArchive, ProfilePreview};
 pub use skills::{scan_project_skills, ProjectSkills, SkillChange, SkillChangeKind, SkillEntry, SkillInventory, SkillLocation};
 pub use sources::{scan_project_config, ConfigInspection, ConfigObservation, ProjectConfigReport, ProjectConfigSource, ProjectScope};
-pub use storage::{SecretStore, SkillBackup, Snapshot};
+pub use storage::{
+    ActivityAction, ActivityStatus, ConfigActivity, SecretStore, SkillBackup, Snapshot, SnapshotCleanupPreview,
+    SnapshotCleanupResult,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +44,8 @@ pub enum Error {
     BackupFailed,
     SnapshotMissing,
     SnapshotMismatch,
+    SnapshotCleanupSelection,
+    ActivityStorage,
     VaultUnavailable,
     InvalidSecret,
     MissingSecret,
