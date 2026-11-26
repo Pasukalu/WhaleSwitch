@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpFromLine, CircleAlert, History, Layers, Pin, PinOff, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, previewMode } from "../api";
 import type { ConfigActivity, Snapshot, SnapshotCleanupPreview, Tool, View } from "../domain";
 import { errorText, type Copy, type Language } from "../i18n";
+import { pageForSnapshot, snapshotPage } from "../snapshot-history";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 type CompareMode = "compare" | "restore" | "restore_fields";
 type Task = (action: () => Promise<void>) => Promise<boolean>;
 
 export function SnapshotsPanel({ t, language, tool, view, snapshots, focus, loading, problem, busy,
-  onTask, onCapture, onCompare, onRefresh, onNotice }: {
+  onLocated, onTask, onCapture, onCompare, onRefresh, onNotice }: {
   t: Copy;
   language: Language;
   tool: Tool;
@@ -19,6 +21,7 @@ export function SnapshotsPanel({ t, language, tool, view, snapshots, focus, load
   loading: boolean;
   problem: unknown;
   busy: boolean;
+  onLocated: () => void;
   onTask: Task;
   onCapture: () => Promise<void>;
   onCompare: (id: number, kind: CompareMode) => Promise<void>;
@@ -28,11 +31,37 @@ export function SnapshotsPanel({ t, language, tool, view, snapshots, focus, load
   const [review, setReview] = useState<SnapshotCleanupPreview | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [activityVersion, setActivityVersion] = useState(0);
+  const [query, setQuery] = useState("");
+  const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [location, setLocation] = useState<{ id: number } | null>(null);
+  const locatedRow = useRef<HTMLDivElement>(null);
   const locale = language === "zh" ? "zh-CN" : "en";
   const format = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
   const selectedBytes = review?.candidates.reduce((sum, item) => sum + (selected.includes(item.id) ? item.stored_bytes : 0), 0) ?? 0;
   const totalBytes = snapshots.reduce((sum, item) => sum + item.stored_bytes, 0);
   const disabled = busy || loading;
+  const page = snapshotPage(snapshots, query, pinnedOnly, pageIndex);
+
+  const locate = useCallback((id: number) => {
+    const index = pageForSnapshot(snapshots, id);
+    if (index === null) return false;
+    setQuery("");
+    setPinnedOnly(false);
+    setPageIndex(index);
+    setLocation({ id });
+    return true;
+  }, [snapshots]);
+
+  useEffect(() => {
+    if (focus !== null && !loading && !problem && locate(focus)) onLocated();
+  }, [focus, loading, problem, locate, onLocated]);
+
+  useEffect(() => {
+    if (!location) return;
+    locatedRow.current?.focus({ preventScroll: true });
+    locatedRow.current?.scrollIntoView({ block: "nearest" });
+  }, [location]);
 
   function clearReview() {
     setReview(null);
@@ -123,45 +152,73 @@ export function SnapshotsPanel({ t, language, tool, view, snapshots, focus, load
         </div></div>
         : snapshots.length === 0 ? <div className="empty"><div className="empty-icon"><Layers size={23}/></div>
           <h3>{t.noSnapshots}</h3><p>{t.snapHint}</p></div>
-        : <div className="snapshot-list">
-          <p className="history-size small muted">{t.snapshotPayload} · {byteSize(totalBytes, locale)}</p>
-          {snapshots.map((item) => <div className="snapshot-row managed-snapshot" key={item.id}
-            id={`snapshot-${item.id}`} tabIndex={item.id === focus ? -1 : undefined}>
-            <div className="snapshot-icon"><Layers size={18}/></div>
-            <div className="snapshot-text">
-              <div className="skill-labels"><strong>{t[item.reason]}</strong>
-                {item.pinned && <span className="format-tag">{t.pinnedSnapshot}</span>}
+        : <>
+          <div className="panel-body snapshot-filters">
+            <div className="field"><label htmlFor="snapshot-search">{t.snapshotSearch}</label>
+              <Input id="snapshot-search" type="search" placeholder="#123" value={query} onChange={(event) => {
+                setQuery(event.currentTarget.value);
+                setPageIndex(0);
+              }}/></div>
+            <label className="check-row"><input type="checkbox" checked={pinnedOnly} onChange={(event) => {
+              setPinnedOnly(event.currentTarget.checked);
+              setPageIndex(0);
+            }}/>{t.snapshotPinnedOnly}</label>
+          </div>
+          <div className="snapshot-list">
+            <div className="history-size plan-line small muted">
+              <span role="status">{page.count ? t.snapshotMatches.replace("{count}", String(page.count)) : t.snapshotNoMatches}</span>
+              <span>{t.snapshotPayload} · {byteSize(totalBytes, locale)}</span>
+            </div>
+            {page.items.map((item) => <div className="snapshot-row managed-snapshot" key={item.id}
+              role="group" aria-label={`${t.ref} #${item.id}`} ref={location?.id === item.id ? locatedRow : undefined} tabIndex={-1}>
+              <div className="snapshot-icon"><Layers size={18}/></div>
+              <div className="snapshot-text">
+                <div className="skill-labels"><strong>{t[item.reason]}</strong>
+                  {item.pinned && <span className="format-tag">{t.pinnedSnapshot}</span>}
+                </div>
+                <small>{format.format(item.timestamp)} · #{item.id} · {byteSize(item.stored_bytes, locale)}</small>
               </div>
-              <small>{format.format(item.timestamp)} · #{item.id} · {byteSize(item.stored_bytes, locale)}</small>
+              <div className="row-actions snapshot-actions">
+                <Button variant="ghost" size="icon" disabled={disabled || !view}
+                  aria-label={`${item.pinned ? t.unpinSnapshot : t.pinSnapshot} #${item.id}`}
+                  title={item.pinned ? t.unpinSnapshot : t.pinSnapshot} onClick={() => togglePin(item)}>
+                  {item.pinned ? <PinOff/> : <Pin/>}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={disabled || !view}
+                  onClick={() => void onTask(() => onCompare(item.id, "compare"))}>{t.compare}</Button>
+                <Button variant="ghost" size="sm" disabled={disabled || !view}
+                  onClick={() => void onTask(() => onCompare(item.id, "restore"))}>{t.restore}</Button>
+                <Button variant="outline" size="sm" disabled={disabled || !view || Boolean(view.issue)}
+                  onClick={() => void onTask(() => onCompare(item.id, "restore_fields"))}>{t.restoreFields}</Button>
+              </div>
+            </div>)}
+          </div>
+          {page.pageCount > 1 && <div className="panel-footer spread snapshot-pagination">
+            <span className="small muted" role="status">
+              {t.snapshotPage.replace("{page}", String(page.index + 1)).replace("{total}", String(page.pageCount))}
+            </span>
+            <div className="row-actions">
+              <Button variant="ghost" size="sm" aria-disabled={page.index === 0}
+                onClick={() => { if (page.index > 0) setPageIndex(page.index - 1); }}>{t.snapshotPreviousPage}</Button>
+              <Button variant="ghost" size="sm" aria-disabled={page.index + 1 === page.pageCount}
+                onClick={() => { if (page.index + 1 < page.pageCount) setPageIndex(page.index + 1); }}>{t.snapshotNextPage}</Button>
             </div>
-            <div className="row-actions snapshot-actions">
-              <Button variant="ghost" size="icon" disabled={disabled || !view}
-                aria-label={`${item.pinned ? t.unpinSnapshot : t.pinSnapshot} #${item.id}`}
-                title={item.pinned ? t.unpinSnapshot : t.pinSnapshot} onClick={() => togglePin(item)}>
-                {item.pinned ? <PinOff/> : <Pin/>}
-              </Button>
-              <Button variant="ghost" size="sm" disabled={disabled || !view}
-                onClick={() => void onTask(() => onCompare(item.id, "compare"))}>{t.compare}</Button>
-              <Button variant="ghost" size="sm" disabled={disabled || !view}
-                onClick={() => void onTask(() => onCompare(item.id, "restore"))}>{t.restore}</Button>
-              <Button variant="outline" size="sm" disabled={disabled || !view || Boolean(view.issue)}
-                onClick={() => void onTask(() => onCompare(item.id, "restore_fields"))}>{t.restoreFields}</Button>
-            </div>
-          </div>)}
-        </div>}
+          </div>}
+        </>}
     </section>
     <ActivityPanel key={tool} t={t} language={language} tool={tool} snapshots={snapshots} refresh={activityVersion}
-      busy={busy} onTask={onTask} onNotice={onNotice}/>
+      busy={busy} onLocate={locate} onTask={onTask} onNotice={onNotice}/>
   </div>;
 }
 
-function ActivityPanel({ t, language, tool, snapshots, refresh, busy, onTask, onNotice }: {
+function ActivityPanel({ t, language, tool, snapshots, refresh, busy, onLocate, onTask, onNotice }: {
   t: Copy;
   language: Language;
   tool: Tool;
   snapshots: Snapshot[];
   refresh: number;
   busy: boolean;
+  onLocate: (id: number) => void;
   onTask: Task;
   onNotice: (message: string) => void;
 }) {
@@ -169,6 +226,7 @@ function ActivityPanel({ t, language, tool, snapshots, refresh, busy, onTask, on
   const [problem, setProblem] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const format = new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "medium" });
+  const snapshotIds = new Set(snapshots.map(({ id }) => id));
 
   useEffect(() => {
     let active = true;
@@ -199,12 +257,17 @@ function ActivityPanel({ t, language, tool, snapshots, refresh, busy, onTask, on
       <CircleAlert size={17}/>{errorText(problem, language)}
     </p></div>
       : events?.length ? <ul className="snapshot-list">
-        {events.map((event, index) => <li className="snapshot-row" key={`${event.timestamp}-${event.action}-${index}`}>
-          <div className="snapshot-text"><strong>{t.activityActions[event.action]}</strong>
-            <small>{format.format(event.timestamp)}{event.snapshot_id !== null ? ` · ${t.ref} #${event.snapshot_id}` : ""}</small>
-          </div>
-          <span className={`format-tag activity-status ${event.status}`}>{t.activityStatuses[event.status]}</span>
-        </li>)}
+        {events.map((event, index) => {
+          const id = event.snapshot_id;
+          return <li className="snapshot-row" key={`${event.timestamp}-${event.action}-${index}`}>
+            <div className="snapshot-text"><strong>{t.activityActions[event.action]}</strong>
+              <small>{format.format(event.timestamp)}{id !== null ? ` · ${t.ref} #${id}` : ""}</small>
+            </div>
+            {id !== null && snapshotIds.has(id) && <Button variant="ghost" size="sm"
+              aria-label={`${t.snapshotLocate} #${id}`} disabled={busy} onClick={() => onLocate(id)}>{t.snapshotLocate}</Button>}
+            <span className={`format-tag activity-status ${event.status}`}>{t.activityStatuses[event.status]}</span>
+          </li>;
+        })}
       </ul> : <p className="panel-body small muted" role="status">{events === null ? t.loading : t.configActivityEmpty}</p>}
   </section>;
 }

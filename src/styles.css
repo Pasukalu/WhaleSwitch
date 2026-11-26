@@ -165,6 +165,11 @@ h1, h2, h3, p { margin: 0; }
 .history-head, .history-head .row-actions, .managed-snapshot { flex-wrap: wrap; }
 .managed-snapshot .snapshot-text { flex: 1 0 125px; }
 .managed-snapshot .snapshot-actions { margin-left: auto; }
+.snapshot-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding-bottom: 5px; }
+.snapshot-filters .field { flex: 1 1 170px; max-width: 290px; }
+.snapshot-filters > .check-row { min-height: 40px; }
+.snapshot-pagination { flex-wrap: wrap; }
+.snapshot-pagination button[aria-disabled="true"] { opacity: .45; cursor: default; }
 .history-size { padding: 8px 4px; border-bottom: 1px solid var(--edge); }
 .cleanup-review { background: var(--raised); border-bottom: 1px solid var(--edge); }
 .cleanup-review h3 { font-size: 13px; font-weight: 650; }

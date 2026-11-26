@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1
+
+- Find a configuration snapshot by its exact number, filter pinned snapshots, and page through the current configuration’s history.
+- Open the page containing a snapshot directly from local activity or a configuration plan result. Keyboard focus moves to the selected snapshot once, so a history refresh can no longer jump back to it.
+
 ## 1.10.0
 
 - Pin configuration snapshots and inspect their encrypted payload size. Preview and explicitly select older snapshots to remove. Cleanup preserves the newest five at each target, pinned snapshots, and plan backups.
