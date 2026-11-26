@@ -30,16 +30,16 @@ WhaleSwitch 用于查清配置从哪里读入、比较改动、切换多工具�
 在下载目录执行相应命令。Windows 需要将命令输出与校验文件中的哈希比对。其他命令直接使用校验文件验证。
 
 ```powershell
-Get-FileHash .\WhaleSwitch-1.10.0-windows-x64.exe -Algorithm SHA256
-Get-FileHash .\WhaleSwitch-1.10.0-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.10.1-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\WhaleSwitch-1.10.1-windows-x64-portable.zip -Algorithm SHA256
 ```
 
 ```sh
 # macOS Apple Silicon
-shasum -a 256 -c WhaleSwitch-1.10.0-macos-arm64.dmg.sha256
+shasum -a 256 -c WhaleSwitch-1.10.1-macos-arm64.dmg.sha256
 
 # Ubuntu
-sha256sum -c WhaleSwitch-1.10.0-linux-x64.deb.sha256
+sha256sum -c WhaleSwitch-1.10.1-linux-x64.deb.sha256
 ```
 
 </details>
@@ -59,9 +59,9 @@ sha256sum -c WhaleSwitch-1.10.0-linux-x64.deb.sha256
 
 ### 管理快照与操作记录
 
-1. 选中工具后打开 **快照**。用图钉固定关键版本，列表会显示快照的编号、时间和加密数据量。
+1. 选中工具后打开 **快照**。用图钉固定关键版本。可输入编号搜索、筛选已固定项，或翻页查看历史。
 2. 点 **预览清理**，逐项勾选要永久移除的旧快照。当前配置目标最近五份、固定的快照和方案执行前的备份会保留。每次最多审阅 50 个候选。
-3. 在 **本地操作记录** 查看当前工具的写入、恢复与方案结果。**导出记录**保存 JSON，条目仅包含时间、工具、动作、结果和关联的快照编号。
+3. 在 **本地操作记录** 查看当前工具的写入、恢复与方案结果。点 **定位快照** 可打开关联快照所在的页面。**导出记录**保存 JSON，条目仅包含时间、工具、动作、结果和关联的快照编号。
 
 快照清理回收 SQLite 内部可复用空间。显示的数据量是加密内容大小。
 

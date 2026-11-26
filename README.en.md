@@ -39,7 +39,7 @@ Release notes identify each version's platform signing status and retest coverag
 
 ### Manage snapshots and activity
 
-1. Select a tool and open **Snapshots**. Pin important versions and check each snapshot's number, date, and encrypted payload size.
+1. Select a tool and open **Snapshots**. Pin important versions, find a snapshot by number, filter pinned items, or page through the history.
 2. Select **Preview cleanup** and check the older snapshots to remove permanently. The newest five snapshots for the current target, pinned snapshots, and pre-plan backups are kept. Each preview includes up to 50 candidates.
 3. Open **Local activity** to review writes, restores, and plan results for the selected tool. **Export activity** saves JSON entries containing only the timestamp, tool, action, result, and associated snapshot number.
 

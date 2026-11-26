@@ -15,10 +15,10 @@ Windows 的系统签名需要受信任的 Authenticode 发布者身份。macOS �
 
 ## Verify the detached statement
 
-In a directory containing a package and the detached Sigstore bundle from the same release, run the following command with an authenticated GitHub CLI. This example verifies the v1.10.0 portable ZIP. Substitute the matching bundle and package filenames to verify another version.
+In a directory containing a package and the detached Sigstore bundle from the same release, run the following command with an authenticated GitHub CLI. This example verifies the v1.10.1 portable ZIP. Substitute the matching bundle and package filenames to verify another version.
 
 ```powershell
-gh attestation verify ./WhaleSwitch-1.10.0-windows-x64-portable.zip --bundle ./WhaleSwitch-1.10.0-verification.sigstore.json --repo Pasukalu/WhaleSwitch --signer-workflow Pasukalu/WhaleSwitch/.github/workflows/verify-release.yml --predicate-type https://github.com/Pasukalu/WhaleSwitch/attestations/native-release-retest/v1 --deny-self-hosted-runners
+gh attestation verify ./WhaleSwitch-1.10.1-windows-x64-portable.zip --bundle ./WhaleSwitch-1.10.1-verification.sigstore.json --repo Pasukalu/WhaleSwitch --signer-workflow Pasukalu/WhaleSwitch/.github/workflows/verify-release.yml --predicate-type https://github.com/Pasukalu/WhaleSwitch/attestations/native-release-retest/v1 --deny-self-hosted-runners
 ```
 
 The statement covers the published Windows NSIS installer and portable ZIP, both macOS DMGs, and the Ubuntu DEB. It records the original release commit and the separate verification run. Native keychain operations use isolated fixtures and disposable credentials.

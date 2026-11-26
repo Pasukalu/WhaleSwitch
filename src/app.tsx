@@ -200,12 +200,7 @@ export function App() {
     return () => { active = false; };
   }, [tool, viewPath, refresh]);
 
-  useEffect(() => {
-    if (tab !== "snapshots" || snapshotFocus === null || historyLoading) return;
-    const row = document.getElementById(`snapshot-${snapshotFocus}`);
-    row?.focus({ preventScroll: true });
-    row?.scrollIntoView({ block: "nearest" });
-  }, [tab, snapshotFocus, snapshots, historyLoading]);
+  const clearSnapshotFocus = useCallback(() => setSnapshotFocus(null), []);
 
   useEffect(() => {
     let active = true;
@@ -511,6 +506,7 @@ export function App() {
                   onExport={(profile) => void run(() => exportProfile(profile))}/>
                 : tab === "snapshots" ? <SnapshotsPanel key={JSON.stringify([tool, viewPath])} t={t} language={language} tool={tool}
                   view={view} snapshots={snapshots} focus={snapshotFocus} loading={historyLoading} problem={historyProblem} busy={configLocked}
+                  onLocated={clearSnapshotFocus}
                   onTask={run} onCapture={capture} onCompare={compare} onRefresh={refreshHistory} onNotice={success}/>
                 : !view || view.issue ? <section className="panel">
                   <Empty icon={<CircleAlert size={23}/>} title={t.unavailable} subtitle={errorText(baselineIssue, language)}/>
